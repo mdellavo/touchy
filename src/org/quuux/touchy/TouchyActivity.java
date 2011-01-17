@@ -441,7 +441,7 @@ abstract class World implements Drawable, Tickable {
     abstract public void loadTexture(GL10 gl);
     abstract public void tick();
 
-    public void setSize(width, height) {
+    public void setSize(int width, int height) {
         this.width  = width;
         this.height = height;
     }
@@ -542,8 +542,4 @@ class BackgroundTile extends Tile {
     protected int getTextureDrawable() {
         return texture_drawable;
     }
-
-    public BackgroundTile() {
-        super();
-   }
 }
