@@ -466,7 +466,7 @@ class AsteroidSprite extends Sprite {
         1.0f , 0
     };
  
-    protected static int texture_drawable = R.drawable.asteroid;
+    protected static int texture_drawable = R.drawable.cloud;
 
     public AsteroidSprite() {
         super();
