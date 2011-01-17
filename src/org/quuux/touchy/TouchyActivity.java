@@ -46,15 +46,15 @@ public class TouchyActivity extends Activity
         AsteroidCommandWorld world = new AsteroidCommandWorld();
         
         Random random = new Random();
-        int num_asteroids = 200;
+        int num_asteroids = 100;
         for(int i=0; i<num_asteroids; i++) {
             AsteroidSprite a = new AsteroidSprite(world);
 
-            a.position.x = 50.0f + (random.nextFloat()*300.0f);
-            a.position.y = 50.0f + (random.nextFloat()*300.0f);
+            a.position.x = 150.0f;
+            a.position.y = 150.0f;
 
-            a.velocity.x = (random.nextFloat() - .5f)*.1f;
-            a.velocity.y = (random.nextFloat() - .5f)*.1f;
+            a.velocity.x = (random.nextFloat() - .5f) * .01f;
+            a.velocity.y = (random.nextFloat() - .5f) * .01f;
 
             a.rotation.z = random.nextFloat() * 360.0f;
             a.angular_velocity.z = random.nextFloat() - .5f;
@@ -127,23 +127,24 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         gl.glBlendFunc(GL10.GL_ONE, GL10.GL_ONE_MINUS_SRC_ALPHA);
         gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, 
                      /*GL10.GL_REPLACE*/ GL10.GL_MODULATE);
-
-        world.loadTexture(gl);
    }
 
-    public void onSurfaceChanged(GL10 gl, int w, int h) {
+    public void onSurfaceChanged(GL10 gl, int width, int height) {
 
-        Log.d(TAG, "surface created: " + w + "x" + h);
+        Log.d(TAG, "surface created: " + width + "x" + height);
 
-        gl.glViewport(0, 0, w, h);
+        gl.glViewport(0, 0, width, height);
         
         gl.glMatrixMode(GL10.GL_PROJECTION);
         gl.glLoadIdentity();
 
-        GLU.gluOrtho2D(gl, 0f, (float)w, (float)h, 0f);
+        GLU.gluOrtho2D(gl, 0f, (float)width, 0f, (float)height);
 
         gl.glMatrixMode(GL10.GL_MODELVIEW);
         gl.glLoadIdentity();
+
+        world.setSize(width, height);
+        world.loadTexture(gl);
     }
 
     public void onDrawFrame(GL10 gl) {
@@ -241,20 +242,13 @@ abstract class Tile implements Drawable {
         position = new Vector3();
         rotation = new Vector3();
         scale    = new Vector3(1f,1f,1f);
-        bounds   = new Vector3(10f,10f,10f);
+        bounds   = new Vector3();
         
         color = new float[4];
         color[0] = 1.0f;
         color[1] = 1.0f;
         color[2] = 1.0f;
         color[3] = 1.0f;
-
-        vertices         = getVertices();
-        texture_vertices = getTextureVertices();
-        texture_drawable = getTextureDrawable();
-
-        vertex_array     = loadVertices(vertices);
-        texture_array    = loadVertices(texture_vertices);
     }
 
     protected float[] getVertices() {
@@ -267,6 +261,10 @@ abstract class Tile implements Drawable {
 
     protected int getTextureDrawable() {
         return 0;
+    }
+
+    protected boolean getTextureRepeat() {
+        return false;
     }
 
     protected FloatBuffer loadVertices(float[] vertices) {
@@ -283,6 +281,14 @@ abstract class Tile implements Drawable {
     }
 
     public void loadTexture(GL10 gl) {
+
+        vertices         = getVertices();
+        texture_vertices = getTextureVertices();
+        texture_drawable = getTextureDrawable();
+
+        vertex_array     = loadVertices(vertices);
+        texture_array    = loadVertices(texture_vertices);
+
         int[] texture_ids = new int[1];
 
         gl.glGenTextures(1, texture_ids, 0);
@@ -296,9 +302,9 @@ abstract class Tile implements Drawable {
                            GL10.GL_LINEAR);
 
         gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
-                           GL10.GL_CLAMP_TO_EDGE);
+                           GL10.GL_REPEAT);
         gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
-                           GL10.GL_CLAMP_TO_EDGE);
+                           GL10.GL_REPEAT);
         
         Log.d(TAG, "loading texture: " + texture_drawable);
 
@@ -435,7 +441,7 @@ class SpriteGroup extends TileGroup implements Tickable {
 }
 
 abstract class World implements Drawable, Tickable {
-    protected int width, height;
+    public int width, height;
 
     abstract public void draw(GL10 gl);
     abstract public void loadTexture(GL10 gl);
@@ -473,6 +479,11 @@ class AsteroidCommandWorld extends World {
         asteroids.tick();
         projectiles.tick();
         stations.tick();
+
+        // Vector<Tile> collisions = asteroids.collide(asteroids);
+        // for(Tile t : collisions)
+        //     Log.d(TAG, "collision: " + t);
+        
     }
 }
 
@@ -493,6 +504,8 @@ class AsteroidSprite extends Sprite {
  
     protected static int texture_drawable = R.drawable.asteroid;
 
+    protected static Vector3 bounds = new Vector3();
+
     public AsteroidSprite(World world) {
         super(world);
     }
@@ -508,6 +521,16 @@ class AsteroidSprite extends Sprite {
     protected int getTextureDrawable() {
         return texture_drawable;
     }
+
+    public void tick() {
+        super.tick();
+        
+        if(position.x < 0 || position.x > world.width)
+            velocity.x *= -1;
+
+        if(position.y < 0 || position.y > world.height)
+            velocity.y *= -1;
+    }
 }
 
 class BackgroundTile extends Tile {
@@ -519,10 +542,10 @@ class BackgroundTile extends Tile {
     };
 
     protected static float texture_vertices[] = {
-        0    , 1.0f ,
-        1.0f , 1.0f ,
-        0    , 0    ,
-        1.0f , 0
+        0  , 4f ,
+        4f , 4f ,
+        0  , 0  ,
+        4f , 0
     };
 
     protected static int texture_drawable = R.drawable.space;
@@ -532,6 +555,11 @@ class BackgroundTile extends Tile {
     }
 
     protected float[] getVertices() {
+        vertices[3]  = world.width;
+        vertices[9]  = world.width;        
+        vertices[7]  = world.height;
+        vertices[10] = world.height;        
+
         return vertices;
     }
 
