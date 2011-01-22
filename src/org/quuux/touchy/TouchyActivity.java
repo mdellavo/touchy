@@ -54,9 +54,9 @@ public class TouchyActivity extends Activity
             a.position.y = (random.nextFloat() * 20.0f);
             a.position.z = (random.nextFloat() * 20.0f) - 10f;
             
-            // a.velocity.x = (random.nextFloat() - .5f) * .1f;
-            // a.velocity.y = (random.nextFloat() - .5f) * .1f;
-            // a.velocity.z = (random.nextFloat() - .5f) * .1f;
+            a.velocity.x = (random.nextFloat() * .02f) - .1f;
+            a.velocity.y = (random.nextFloat() * .02f) - .1f;
+            a.velocity.z = (random.nextFloat() * .02f) - .1f;
 
             //a.rotation.z = random.nextFloat() * 360.0f;
             //a.angular_velocity.z = random.nextFloat() - .5f;
@@ -154,7 +154,6 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
                           0, 0, 0,
                           0, 1, 0 );
         
-        world.setSize(width, height);
         world.loadTexture(gl);
     }
 
@@ -168,7 +167,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
         gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 
-        camera_rotation += .001f;
+        camera_rotation += .0001f;
         gl.glRotatef(camera_rotation, 0, 1f, 0);       
 
         // draw sprites
@@ -476,16 +475,12 @@ class SpriteGroup extends TileGroup implements Tickable {
 }
 
 abstract class World implements Drawable, Tickable {
-    public int width, height;
+    public int width = 25, height = 25, depth = 25;
 
     abstract public void draw(GL10 gl);
     abstract public void loadTexture(GL10 gl);
     abstract public void tick();
 
-    public void setSize(int width, int height) {
-        this.width  = width;
-        this.height = height;
-    }
 }
 
 class AsteroidCommandWorld extends World {
@@ -1516,15 +1511,18 @@ class AsteroidSprite extends Sprite {
     public void tick() {
         super.tick();
         
-        if(position.x < 0 || position.x > world.width) {
+        if(position.x <= -world.width || position.x >= world.width) {
             velocity.x *= -1;
-            position.x = 0;
+        }
+        
+        if(position.y <= 0 || position.y >= world.height) {
+            velocity.y *= -1;
         }
 
-        if(position.y < 0 || position.y > world.height) {
-            velocity.y *= -1;
-            position.y = 0;
+        if(position.z <= -world.depth || position.z >= world.depth) {
+            velocity.z *= -1;
         }
+
     }
 }
 
