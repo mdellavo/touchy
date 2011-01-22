@@ -413,7 +413,7 @@ class TileGroup implements Drawable {
 
         for(Tile tile : tiles)
             for(Tile other : others.getTiles())
-                if(tile.contains(other))
+                if(tile != other && tile.contains(other))
                     rv.add(other);
 
         return rv;
@@ -510,9 +510,8 @@ class AsteroidCommandWorld extends World {
         projectiles.tick();
         stations.tick();
 
-        // Vector<Tile> collisions = asteroids.collide(asteroids);
-        // for(Tile t : collisions)
-        //     Log.d(TAG, "collision: " + t);
+        Vector<Tile> collisions = asteroids.collide(asteroids);
+        Log.d(TAG, "collision: " + collisions.size());
         
     }
 }
