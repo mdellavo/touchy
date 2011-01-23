@@ -68,17 +68,17 @@ public class TouchyActivity extends Activity
             world.asteroids.add(a);
         }
 
-        // BackgroundTile b = new BackgroundTile(world);        
-        // b.position.z = 100;
-        // world.statics.add(b);
+        BackgroundTile b = new BackgroundTile(world);        
+        world.statics.add(b);
 
         GroundTile g = new GroundTile(world);
         world.statics.add(g);
 
-        TouchyRenderer renderer = new TouchyRenderer(world);
+        Camera camera = new Camera();
+
+        TouchyRenderer renderer = new TouchyRenderer(world, camera);
         view.setRenderer(renderer);
-        setContentView(view);      
-          
+        setContentView(view);                
     }
 
     @Override
@@ -117,14 +117,14 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     private static final String TAG = "TouchyRenderer";
 
     protected World world;
-    protected int frames;
+    protected Camera camera;
 
+    protected int frames;
     protected long last;
 
-    protected float camera_rotation;
-
-    public TouchyRenderer(World world) {
+    public TouchyRenderer(World world, Camera camera) {
         this.world = world;
+        this.camera = camera;
     }
 
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
@@ -143,21 +143,8 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     public void onSurfaceChanged(GL10 gl, int width, int height) {
 
         Log.d(TAG, "surface created: " + width + "x" + height);
-      
-        gl.glViewport(0, 0, width, height);        
-
-        gl.glMatrixMode(GL10.GL_PROJECTION);
-        gl.glLoadIdentity();
-
-        GLU.gluPerspective(gl, 90.0f, (float)width/(float)height, .1f, 100.0f);
-
-        gl.glMatrixMode(GL10.GL_MODELVIEW);
-        gl.glLoadIdentity();
-
-        GLU.gluLookAt(gl, 25, 25, 25, 
-                          0, 0, 0,
-                          0, 1, 0 );
         
+        camera.setup(gl, width, height);
         world.loadTexture(gl);
     }
 
@@ -166,13 +153,13 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         long now = System.currentTimeMillis();
 
         frames++;        
-        
+
+        camera.tick();
         world.tick();
 
         gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 
-        camera_rotation += .0001f;
-        gl.glRotatef(camera_rotation, 0, 1f, 0);       
+        camera.update(gl);
 
         // draw sprites
         world.draw(gl);
@@ -182,6 +169,54 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
             last = now;
             frames = 0;
         }
+    }
+}
+
+class Camera {
+
+    protected Vector3 eye;
+    protected Vector3 center;
+    protected Vector3 up;
+    protected Vector3 rotation;
+    protected float fov;
+    protected float znear; 
+    protected float zfar;
+
+    public Camera() {
+        eye = new Vector3(25, 25, 25);
+        center = new Vector3(0, 0, 0);
+        up = new Vector3(0f, 1f, 0f);    
+        rotation = new Vector3(0, 0, 0);
+        fov = 90f;
+        znear = .1f;
+        zfar = 100f;
+    }
+
+    void setup(GL10 gl, int width, int height) {
+        gl.glViewport(0, 0, width, height);        
+
+        gl.glMatrixMode(GL10.GL_PROJECTION);
+        gl.glLoadIdentity();
+
+        GLU.gluPerspective(gl, fov, (float)width/(float)height, znear, zfar);
+
+        gl.glMatrixMode(GL10.GL_MODELVIEW);
+        gl.glLoadIdentity();
+
+        GLU.gluLookAt(gl, eye.x, eye.y, eye.z, 
+                          center.x, center.y, center.z,
+                          up.x, up.y, up.z );
+    }
+
+    // FIXME add transation and other 
+    void update(GL10 gl) {
+        gl.glRotatef(rotation.x, 1f, 1f, 0);
+        gl.glRotatef(rotation.y, 0, 1f, 0);
+        gl.glRotatef(rotation.z, 0, 1f, 1f);
+    }
+
+    void tick() {
+        rotation.y += .0001f;
     }
 }
 
@@ -1538,10 +1573,10 @@ class AsteroidSprite extends Sprite {
 
 class BackgroundTile extends Tile {
     protected static float vertices[] = {
-        0f   , 0f   , 0, 
-        300f , 0f   , 0,
-        0f   , 500f , 0,
-        300f , 500f , 0
+        -50f , -50f , -25f,
+        50f  , -50f , -25f,
+        -50f , 50f  , -25f, 
+        50f  , 50f  , -25f
     };
 
     protected static float texture_vertices[] = {
@@ -1558,11 +1593,6 @@ class BackgroundTile extends Tile {
     }
 
     protected float[] getVertices() {
-        vertices[3]  = world.width;
-        vertices[9]  = world.width;        
-        vertices[7]  = world.height;
-        vertices[10] = world.height;        
-
         return vertices;
     }
 
