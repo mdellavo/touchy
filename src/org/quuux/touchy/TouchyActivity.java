@@ -14,6 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.util.Log;
 import android.util.DisplayMetrics;
+import android.content.res.AssetManager;
 
 import java.nio.FloatBuffer;
 import java.nio.ByteBuffer;
@@ -26,6 +27,11 @@ import java.util.Vector;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Random;
+
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.io.IOException;
 
 public class TouchyActivity extends Activity
 {
@@ -41,6 +47,7 @@ public class TouchyActivity extends Activity
 
         view = new TouchyGLSurfaceView(this);
 
+        ObjLoader.init(this);
         TextureLoader.init(this);
 
         AsteroidCommandWorld world = new AsteroidCommandWorld();
@@ -68,8 +75,8 @@ public class TouchyActivity extends Activity
             world.asteroids.add(a);
         }
 
-        BackgroundTile b = new BackgroundTile(world);        
-        world.statics.add(b);
+        // BackgroundTile b = new BackgroundTile(world);        
+        // world.statics.add(b);
 
         GroundTile g = new GroundTile(world);
         world.statics.add(g);
@@ -145,7 +152,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         Log.d(TAG, "surface created: " + width + "x" + height);
         
         camera.setup(gl, width, height);
-        world.loadTexture(gl);
+        world.load(gl);
     }
 
     public void onDrawFrame(GL10 gl) {
@@ -160,7 +167,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 
         camera.update(gl);
-
+ 
         // draw sprites
         world.draw(gl);
 
@@ -183,7 +190,7 @@ class Camera {
     protected float zfar;
 
     public Camera() {
-        eye = new Vector3(25, 25, 25);
+        eye = new Vector3(25, 0, 25);
         center = new Vector3(0, 0, 0);
         up = new Vector3(0f, 1f, 0f);    
         rotation = new Vector3(0, 0, 0);
@@ -216,51 +223,275 @@ class Camera {
     }
 
     void tick() {
-        rotation.y += .0001f;
+        //rotation.y += .0001f;
     }
 }
 
 class TextureLoader {
+    private static final String TAG = "TextureLoader";
+    
     private static Context context;
-    private static Map<Integer, Bitmap> cache;
+    private static Map<String, Bitmap> cache;
     
     public static void init(Context context) {
         TextureLoader.context = context;
-        TextureLoader.cache   = new HashMap<Integer, Bitmap>();
+        TextureLoader.cache   = new HashMap<String, Bitmap>();
     }
 
-    public static Bitmap get(int id) {
-        Bitmap rv = TextureLoader.cache.get(Integer.valueOf(id));
+    public static Bitmap get(String key) {
+        Bitmap rv = TextureLoader.cache.get(key);
 
-        if(rv == null)
-            rv = BitmapFactory.decodeResource(TextureLoader.context.getResources(), id);
+        if(rv == null) {
+            rv = openTexture(key);
+            cache.put(key, rv);
+        }
         
         return rv;
+    }
+
+    protected static Bitmap openTexture(String key) {       
+        AssetManager asset_manager = context.getAssets();
+
+        Bitmap rv = null;
+
+        try {
+            String texture_path = "textures/" + key + ".png";
+            
+            Log.d(TAG, "Opening texture: " + texture_path);
+
+            InputStream in = asset_manager.open(texture_path);
+            rv = BitmapFactory.decodeStream(in);
+        } catch(IOException e) {
+            Log.d(TAG, "Could not open texture: " + key);
+        }
+
+        return rv;
+    }
+
+}
+
+class Model {
+    private static final String TAG = "Model";
+    
+    protected int num_vertices;
+    protected FloatBuffer vertices;
+    protected FloatBuffer uvs;
+    protected FloatBuffer normals;
+    protected Bitmap texture;
+    protected int texture_id;
+    protected float[] color;
+
+    public Model(Vector<Vector3> vertices, Vector<Vector3> uvs,
+                 Vector<Vector3> normals, Bitmap texture) {
+
+        this.vertices = loadVertices(vertices);
+        this.uvs = loadVertices(uvs);
+        this.normals = loadVertices(normals);
+
+        this.texture = texture;
+
+        color = new float[4];
+        color[0] = 1.0f;
+        color[1] = 1.0f;
+        color[2] = 1.0f;
+        color[3] = 1.0f;
+    }
+
+    protected FloatBuffer loadVertices(Vector<Vector3> vertices) {
+        num_vertices = vertices.size()*3;
+        ByteBuffer byte_buffer = ByteBuffer.allocateDirect(num_vertices*4);
+        byte_buffer.order(ByteOrder.nativeOrder());
+
+        FloatBuffer rv = byte_buffer.asFloatBuffer();
+
+        for(Vector3 vertex : vertices) {
+            Log.d(TAG, "Loading vertex" + vertex);
+
+            rv.put(vertex.x);
+            rv.put(vertex.y);
+            rv.put(vertex.z);
+        }
+
+        rv.position(0);
+
+        return rv;
+    }
+
+    public void loadTexture(GL10 gl) {
+        int[] texture_ids = new int[1];
+        
+        gl.glGenTextures(1, texture_ids, 0);
+        texture_id = texture_ids[0];
+
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
+
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER,
+                           GL10.GL_LINEAR);
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER,
+                           GL10.GL_LINEAR);
+
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
+                           GL10.GL_REPEAT);
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
+                           GL10.GL_REPEAT);
+        
+        GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, texture, 0);
+        Log.d(TAG, "Loaded Texture ID: " + texture_id);        
+    }
+
+    public void draw(GL10 gl) {
+        gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+        gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
+
+        gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertices);
+
+        gl.glColor4f(color[0], color[1], color[2], color[3]);
+
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
+        gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, uvs);
+
+        gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, num_vertices / 3);
+      
+        gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+        gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
     }
 }
 
 class ObjLoader {
+    private static final String TAG = "ObjLoader";
+
     private static Context context;
-    private static Map<String, Float[]> cache;
+    private static Map<String, Model> cache;
     
-    // public static void init(Context context) {
-    //     ObjLoader.context = context;
-    //     ObjLoader.cache   = new HashMap<Integer, Float[]>();
-    // }
+    public static void init(Context context) {
+        ObjLoader.context = context;
+        ObjLoader.cache   = new HashMap<String, Model>();
+    }
 
-    // public static float[] get(String key) {
-    //     float[] rv = ObjLoader.cache.get(key);
+    public static Model get(String key) {
+        Model rv = ObjLoader.cache.get(key);
 
-    //     if(rv == null) {
-    //     }
+        if(rv == null) {
+            rv = loadModel(key);
+            cache.put(key, rv);
+        }
 
-    //     return rv;
-    // }    
+        return rv;
+    }
+
+    protected static BufferedReader openModel(String key) {       
+        AssetManager asset_manager = context.getAssets();
+
+        BufferedReader rv = null;
+
+        try {
+            String model_path = "models/" + key + ".obj";
+
+            Log.d(TAG, "Loading model: " + model_path);
+
+            InputStream in = asset_manager.open(model_path);
+            InputStreamReader ins = new InputStreamReader(in);
+            rv = new BufferedReader(ins);
+        } catch(IOException e) {
+            Log.d(TAG, "Could not open model: " + key);
+        }
+
+        return rv;
+    }
+
+    protected static Vector3 parsePoint(String[] parts) {
+        Log.d(TAG, "parts: " + java.util.Arrays.deepToString(parts));
+
+        
+
+        return new Vector3( Float.valueOf(parts[1]), 
+                            Float.valueOf(parts[2]), 
+                            parts.length>3 ? Float.valueOf(parts[3]) : 0 );
+    }
+
+    protected static Vector3[][] parseFace( Vector<Vector3> v, 
+                                            Vector<Vector3> vt, 
+                                            Vector<Vector3> vn, 
+                                            String[] parts ) {
+
+        Vector[] tables = {v, vt, vn};
+
+        String p1[] = parts[1].split("/");
+        String p2[] = parts[2].split("/");
+        String p3[] = parts[3].split("/");
+
+        Vector3[][] rv = new Vector3[3][3];
+
+        for(int i=0; i<3; i++) {
+            rv[i][0] = (Vector3)tables[i].get(Integer.parseInt(p1[i])-1); 
+            rv[i][1] = (Vector3)tables[i].get(Integer.parseInt(p2[i])-1); 
+            rv[i][2] = (Vector3)tables[i].get(Integer.parseInt(p3[i])-1); 
+        }
+
+        return rv;
+    }
+
+    protected static Model loadModel(String key) {
+        BufferedReader in = openModel(key);
+
+        if(in == null)
+            return null;
+        
+        Vector<Vector3> v = new Vector<Vector3>();
+        Vector<Vector3> vt = new Vector<Vector3>();
+        Vector<Vector3> vn = new Vector<Vector3>();
+
+        Vector<Vector3> vertices = new Vector<Vector3>();
+        Vector<Vector3> uvs = new Vector<Vector3>();
+        Vector<Vector3> normals = new Vector<Vector3>();
+
+        Model rv = null;
+
+        try {
+            String line;
+        
+
+            while((line = in.readLine()) != null) {
+            
+                String[] parts = line.split("\\s");
+
+                if(parts[0] == "#")
+                    continue;
+                else if(parts[0].equals("vt"))
+                    vt.add(parsePoint(parts));
+                else if(parts[0].equals("vn"))
+                    vn.add(parsePoint(parts));
+                else if(parts[0].equals("v"))
+                    v.add(parsePoint(parts));
+                else if(parts[0].equals("f")) {
+
+                    Vector3[][] face = parseFace(v, vt, vn, parts);
+                    Vector vectors[] = {vertices, uvs, normals};
+
+
+                    Log.d(TAG, "Face: " + face);
+
+
+                    for(int i=0; i<vectors.length; i++)
+                        for(int j=0; j<face[i].length; j++)
+                            vectors[i].add(face[i][j]);
+                }
+            }
+            
+            Bitmap texture = TextureLoader.get(key);
+            rv = new Model(vertices, uvs, normals, texture);
+
+        } catch(IOException e) {
+            Log.d(TAG, "error loading model: " + e);
+        }
+
+        return rv;
+    }
 }
 
 interface Drawable {
     void draw(GL10 gl);
-    void loadTexture(GL10 gl);
+    void load(GL10 gl);
 }
 
 interface Tickable {
@@ -287,113 +518,34 @@ abstract class Tile implements Drawable {
     private static final String TAG = "Tile";
 
     protected World world;
+    protected Model model;
 
     protected Vector3 position;
     protected Vector3 rotation;
     protected Vector3 scale;
     protected Vector3 bounds;
 
-    protected float vertices[];
-    protected float texture_vertices[];
-    protected int texture_drawable;
-    protected int num_elements;
-
-    protected FloatBuffer vertex_array;
-    protected float color[];
-    protected Bitmap texture;
-    protected FloatBuffer texture_array;
-    protected int texture_id = -1;
-
     public Tile(World world) {
         this.world = world;
+
+        model = getModel();
 
         position = new Vector3();
         rotation = new Vector3();
         scale    = new Vector3(1f, 1f, 1f);
         bounds   = new Vector3(.8f, .8f, .8f);
-        
-        color = new float[4];
-        color[0] = 1.0f;
-        color[1] = 1.0f;
-        color[2] = 1.0f;
-        color[3] = 1.0f;
     }
 
-    protected float[] getVertices() {
+    protected Model getModel() {
         return null;
     }
 
-    protected float[] getTextureVertices() {
-        return null;
-    }
-
-    protected int getTextureDrawable() {
-        return 0;
-    }
-
-    protected boolean getTextureRepeat() {
-        return false;
-    }
-
-    protected FloatBuffer loadVertices(float[] vertices) {
-        Log.d(TAG, "Loading vertices: " + vertices);             
-
-        ByteBuffer byte_buffer = ByteBuffer.allocateDirect(vertices.length*4);
-        byte_buffer.order(ByteOrder.nativeOrder());
-
-        FloatBuffer rv = byte_buffer.asFloatBuffer();
-        rv.put(vertices);
-        rv.position(0);
-
-        return rv;
-    }
-
-    public void loadTexture(GL10 gl) {
-
-        vertices         = getVertices();
-        texture_vertices = getTextureVertices();
-        texture_drawable = getTextureDrawable();
-
-        vertex_array     = loadVertices(vertices);
-        texture_array    = loadVertices(texture_vertices);
-
-        int[] texture_ids = new int[1];
-
-        gl.glGenTextures(1, texture_ids, 0);
-        texture_id = texture_ids[0];
-
-        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
-
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER,
-                           GL10.GL_LINEAR);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER,
-                           GL10.GL_LINEAR);
-
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
-                           GL10.GL_REPEAT);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
-                           GL10.GL_REPEAT);
-        
-        Log.d(TAG, "loading texture: " + texture_drawable);
-
-        Bitmap texture = TextureLoader.get(texture_drawable);
-        GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, texture, 0);
-
-        Log.d(TAG, "Loaded Texture ID: " + texture_id);
+    public void load(GL10 gl) {
+        model.loadTexture(gl);
     }
 
     public void draw(GL10 gl) {
         gl.glPushMatrix();
-
-        gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
-        gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
-
-        gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertex_array);
-
-        gl.glColor4f(color[0], color[1], color[2], color[3]);
-
-        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
-        gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, texture_array);
 
         gl.glRotatef(rotation.x, 1f, 0, 0);
         gl.glRotatef(rotation.y, 0, 1f, 0);
@@ -401,10 +553,8 @@ abstract class Tile implements Drawable {
         gl.glTranslatef(position.x, position.y, position.z);
         gl.glScalef(scale.x, scale.y, scale.z);
 
-        gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, vertices.length / 3);
-      
-        gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
-        gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
+        model.draw(gl);
+
         gl.glPopMatrix();
     }
 
@@ -433,9 +583,9 @@ class TileGroup implements Drawable {
         return tiles.add(tile);
     }
 
-    public void loadTexture(GL10 gl) {
+    public void load(GL10 gl) {
         for(Tile t : tiles)
-            t.loadTexture(gl);
+            t.load(gl);
     }
 
     public void draw(GL10 gl) {
@@ -522,7 +672,7 @@ abstract class World implements Drawable, Tickable {
     public int width = 25, height = 25, depth = 25;
 
     abstract public void draw(GL10 gl);
-    abstract public void loadTexture(GL10 gl);
+    abstract public void load(GL10 gl);
     abstract public void tick();
 
 }
@@ -542,11 +692,11 @@ class AsteroidCommandWorld extends World {
         stations.draw(gl);
     }
 
-    public void loadTexture(GL10 gl) {
-        statics.loadTexture(gl);
-        asteroids.loadTexture(gl);
-        projectiles.loadTexture(gl);
-        stations.loadTexture(gl);
+    public void load(GL10 gl) {
+        statics.load(gl);
+        asteroids.load(gl);
+        projectiles.load(gl);
+        stations.load(gl);
     }
 
     public void tick() {
@@ -566,991 +716,14 @@ class AsteroidCommandWorld extends World {
 
 class AsteroidSprite extends Sprite {
 
-    float vertices[] = {
-        // Face 1
-        0.262869f	, -0.525738f	, 0.809012f,
-        0.425323f	, -0.850654f	, 0.309011f,
-        0.723600f	, -0.447215f	, 0.525720f,
-        // Face 2
-        0.425323f	, -0.850654f	, 0.309011f,
-        0.262869f	, -0.525738f	, 0.809012f,
-        -0.162456f	, -0.850654f	, 0.499995f,
-        // Face 3
-        -0.276385f	, -0.447215f	, 0.850640f,
-        -0.162456f	, -0.850654f	, 0.499995f,
-        0.262869f	, -0.525738f	, 0.809012f,
-        // Face 4
-        -0.162456f	, -0.850654f	, 0.499995f,
-        0.000000f	, -1.000000f	, 0.000000f,
-        0.425323f	, -0.850654f	, 0.309011f,
-        // Face 5
-        0.850648f	, -0.525736f	, 0.000000f,
-        0.723600f	, -0.447215f	, 0.525720f,
-        0.425323f	, -0.850654f	, 0.309011f,
-        // Face 6
-        0.425323f	, -0.850654f	, 0.309011f,
-        0.425323f	, -0.850654f	, -0.309011f,
-        0.850648f	, -0.525736f	, 0.000000f,
-        // Face 7
-        0.723600f	, -0.447215f	, -0.525720f,
-        0.850648f	, -0.525736f	, 0.000000f,
-        0.425323f	, -0.850654f	, -0.309011f,
-        // Face 8
-        0.425323f	, -0.850654f	, 0.309011f,
-        0.000000f	, -1.000000f	, 0.000000f,
-        0.425323f	, -0.850654f	, -0.309011f,
-        // Face 9
-        -0.688189f	, -0.525736f	, 0.499997f,
-        -0.162456f	, -0.850654f	, 0.499995f,
-        -0.276385f	, -0.447215f	, 0.850640f,
-        // Face 10
-        -0.162456f	, -0.850654f	, 0.499995f,
-        -0.688189f	, -0.525736f	, 0.499997f,
-        -0.525730f	, -0.850652f	, 0.000000f,
-        // Face 11
-        -0.894425f	, -0.447215f	, 0.000000f,
-        -0.525730f	, -0.850652f	, 0.000000f,
-        -0.688189f	, -0.525736f	, 0.499997f,
-        // Face 12
-        -0.525730f	, -0.850652f	, 0.000000f,
-        0.000000f	, -1.000000f	, 0.000000f,
-        -0.162456f	, -0.850654f	, 0.499995f,
-        // Face 13
-        -0.688189f	, -0.525736f	, -0.499997f,
-        -0.525730f	, -0.850652f	, 0.000000f,
-        -0.894425f	, -0.447215f	, 0.000000f,
-        // Face 14
-        -0.525730f	, -0.850652f	, 0.000000f,
-        -0.688189f	, -0.525736f	, -0.499997f,
-        -0.162456f	, -0.850654f	, -0.499995f,
-        // Face 15
-        -0.276385f	, -0.447215f	, -0.850640f,
-        -0.162456f	, -0.850654f	, -0.499995f,
-        -0.688189f	, -0.525736f	, -0.499997f,
-        // Face 16
-        -0.162456f	, -0.850654f	, -0.499995f,
-        0.000000f	, -1.000000f	, 0.000000f,
-        -0.525730f	, -0.850652f	, 0.000000f,
-        // Face 17
-        0.262869f	, -0.525738f	, -0.809012f,
-        -0.162456f	, -0.850654f	, -0.499995f,
-        -0.276385f	, -0.447215f	, -0.850640f,
-        // Face 18
-        -0.162456f	, -0.850654f	, -0.499995f,
-        0.262869f	, -0.525738f	, -0.809012f,
-        0.425323f	, -0.850654f	, -0.309011f,
-        // Face 19
-        0.723600f	, -0.447215f	, -0.525720f,
-        0.425323f	, -0.850654f	, -0.309011f,
-        0.262869f	, -0.525738f	, -0.809012f,
-        // Face 20
-        0.425323f	, -0.850654f	, -0.309011f,
-        0.000000f	, -1.000000f	, 0.000000f,
-        -0.162456f	, -0.850654f	, -0.499995f,
-        // Face 21
-        0.951058f	, 0.000000f	, 0.309013f,
-        0.723600f	, -0.447215f	, 0.525720f,
-        0.850648f	, -0.525736f	, 0.000000f,
-        // Face 22
-        0.850648f	, -0.525736f	, 0.000000f,
-        0.951058f	, -0.000000f	, -0.309013f,
-        0.951058f	, 0.000000f	, 0.309013f,
-        // Face 23
-        0.894425f	, 0.447215f	, -0.000000f,
-        0.951058f	, 0.000000f	, 0.309013f,
-        0.951058f	, -0.000000f	, -0.309013f,
-        // Face 24
-        0.951058f	, -0.000000f	, -0.309013f,
-        0.850648f	, -0.525736f	, 0.000000f,
-        0.723600f	, -0.447215f	, -0.525720f,
-        // Face 25
-        0.000000f	, 0.000000f	, 1.000000f,
-        -0.276385f	, -0.447215f	, 0.850640f,
-        0.262869f	, -0.525738f	, 0.809012f,
-        // Face 26
-        0.262869f	, -0.525738f	, 0.809012f,
-        0.587786f	, 0.000000f	, 0.809017f,
-        0.000000f	, 0.000000f	, 1.000000f,
-        // Face 27
-        0.276385f	, 0.447215f	, 0.850640f,
-        0.000000f	, 0.000000f	, 1.000000f,
-        0.587786f	, 0.000000f	, 0.809017f,
-        // Face 28
-        0.587786f	, 0.000000f	, 0.809017f,
-        0.262869f	, -0.525738f	, 0.809012f,
-        0.723600f	, -0.447215f	, 0.525720f,
-        // Face 29
-        -0.951058f	, 0.000000f	, 0.309013f,
-        -0.894425f	, -0.447215f	, 0.000000f,
-        -0.688189f	, -0.525736f	, 0.499997f,
-        // Face 30
-        -0.688189f	, -0.525736f	, 0.499997f,
-        -0.587786f	, 0.000000f	, 0.809017f,
-        -0.951058f	, 0.000000f	, 0.309013f,
-        // Face 31
-        -0.723600f	, 0.447215f	, 0.525720f,
-        -0.951058f	, 0.000000f	, 0.309013f,
-        -0.587786f	, 0.000000f	, 0.809017f,
-        // Face 32
-        -0.587786f	, 0.000000f	, 0.809017f,
-        -0.688189f	, -0.525736f	, 0.499997f,
-        -0.276385f	, -0.447215f	, 0.850640f,
-        // Face 33
-        -0.587786f	, -0.000000f	, -0.809017f,
-        -0.276385f	, -0.447215f	, -0.850640f,
-        -0.688189f	, -0.525736f	, -0.499997f,
-        // Face 34
-        -0.688189f	, -0.525736f	, -0.499997f,
-        -0.951058f	, -0.000000f	, -0.309013f,
-        -0.587786f	, -0.000000f	, -0.809017f,
-        // Face 35
-        -0.723600f	, 0.447215f	, -0.525720f,
-        -0.587786f	, -0.000000f	, -0.809017f,
-        -0.951058f	, -0.000000f	, -0.309013f,
-        // Face 36
-        -0.951058f	, -0.000000f	, -0.309013f,
-        -0.688189f	, -0.525736f	, -0.499997f,
-        -0.894425f	, -0.447215f	, 0.000000f,
-        // Face 37
-        0.587786f	, -0.000000f	, -0.809017f,
-        0.723600f	, -0.447215f	, -0.525720f,
-        0.262869f	, -0.525738f	, -0.809012f,
-        // Face 38
-        0.262869f	, -0.525738f	, -0.809012f,
-        0.000000f	, -0.000000f	, -1.000000f,
-        0.587786f	, -0.000000f	, -0.809017f,
-        // Face 39
-        0.276385f	, 0.447215f	, -0.850640f,
-        0.587786f	, -0.000000f	, -0.809017f,
-        0.000000f	, -0.000000f	, -1.000000f,
-        // Face 40
-        0.000000f	, -0.000000f	, -1.000000f,
-        0.262869f	, -0.525738f	, -0.809012f,
-        -0.276385f	, -0.447215f	, -0.850640f,
-        // Face 41
-        0.688189f	, 0.525736f	, 0.499997f,
-        0.951058f	, 0.000000f	, 0.309013f,
-        0.894425f	, 0.447215f	, -0.000000f,
-        // Face 42
-        0.951058f	, 0.000000f	, 0.309013f,
-        0.688189f	, 0.525736f	, 0.499997f,
-        0.587786f	, 0.000000f	, 0.809017f,
-        // Face 43
-        0.276385f	, 0.447215f	, 0.850640f,
-        0.587786f	, 0.000000f	, 0.809017f,
-        0.688189f	, 0.525736f	, 0.499997f,
-        // Face 44
-        0.587786f	, 0.000000f	, 0.809017f,
-        0.723600f	, -0.447215f	, 0.525720f,
-        0.951058f	, 0.000000f	, 0.309013f,
-        // Face 45
-        -0.262869f	, 0.525738f	, 0.809012f,
-        0.000000f	, 0.000000f	, 1.000000f,
-        0.276385f	, 0.447215f	, 0.850640f,
-        // Face 46
-        0.000000f	, 0.000000f	, 1.000000f,
-        -0.262869f	, 0.525738f	, 0.809012f,
-        -0.587786f	, 0.000000f	, 0.809017f,
-        // Face 47
-        -0.723600f	, 0.447215f	, 0.525720f,
-        -0.587786f	, 0.000000f	, 0.809017f,
-        -0.262869f	, 0.525738f	, 0.809012f,
-        // Face 48
-        -0.587786f	, 0.000000f	, 0.809017f,
-        -0.276385f	, -0.447215f	, 0.850640f,
-        0.000000f	, 0.000000f	, 1.000000f,
-        // Face 49
-        -0.850648f	, 0.525736f	, -0.000000f,
-        -0.951058f	, 0.000000f	, 0.309013f,
-        -0.723600f	, 0.447215f	, 0.525720f,
-        // Face 50
-        -0.951058f	, 0.000000f	, 0.309013f,
-        -0.850648f	, 0.525736f	, -0.000000f,
-        -0.951058f	, -0.000000f	, -0.309013f,
-        // Face 51
-        -0.723600f	, 0.447215f	, -0.525720f,
-        -0.951058f	, -0.000000f	, -0.309013f,
-        -0.850648f	, 0.525736f	, -0.000000f,
-        // Face 52
-        -0.951058f	, -0.000000f	, -0.309013f,
-        -0.894425f	, -0.447215f	, 0.000000f,
-        -0.951058f	, 0.000000f	, 0.309013f,
-        // Face 53
-        -0.262869f	, 0.525738f	, -0.809012f,
-        -0.587786f	, -0.000000f	, -0.809017f,
-        -0.723600f	, 0.447215f	, -0.525720f,
-        // Face 54
-        -0.587786f	, -0.000000f	, -0.809017f,
-        -0.262869f	, 0.525738f	, -0.809012f,
-        0.000000f	, -0.000000f	, -1.000000f,
-        // Face 55
-        0.276385f	, 0.447215f	, -0.850640f,
-        0.000000f	, -0.000000f	, -1.000000f,
-        -0.262869f	, 0.525738f	, -0.809012f,
-        // Face 56
-        0.000000f	, -0.000000f	, -1.000000f,
-        -0.276385f	, -0.447215f	, -0.850640f,
-        -0.587786f	, -0.000000f	, -0.809017f,
-        // Face 57
-        0.688189f	, 0.525736f	, -0.499997f,
-        0.587786f	, -0.000000f	, -0.809017f,
-        0.276385f	, 0.447215f	, -0.850640f,
-        // Face 58
-        0.587786f	, -0.000000f	, -0.809017f,
-        0.688189f	, 0.525736f	, -0.499997f,
-        0.951058f	, -0.000000f	, -0.309013f,
-        // Face 59
-        0.894425f	, 0.447215f	, -0.000000f,
-        0.951058f	, -0.000000f	, -0.309013f,
-        0.688189f	, 0.525736f	, -0.499997f,
-        // Face 60
-        0.951058f	, -0.000000f	, -0.309013f,
-        0.723600f	, -0.447215f	, -0.525720f,
-        0.587786f	, -0.000000f	, -0.809017f,
-        // Face 61
-        0.162456f	, 0.850654f	, 0.499995f,
-        0.276385f	, 0.447215f	, 0.850640f,
-        0.688189f	, 0.525736f	, 0.499997f,
-        // Face 62
-        0.688189f	, 0.525736f	, 0.499997f,
-        0.525730f	, 0.850652f	, -0.000000f,
-        0.162456f	, 0.850654f	, 0.499995f,
-        // Face 63
-        0.000000f	, 1.000000f	, -0.000000f,
-        0.162456f	, 0.850654f	, 0.499995f,
-        0.525730f	, 0.850652f	, -0.000000f,
-        // Face 64
-        0.525730f	, 0.850652f	, -0.000000f,
-        0.688189f	, 0.525736f	, 0.499997f,
-        0.894425f	, 0.447215f	, -0.000000f,
-        // Face 65
-        -0.425323f	, 0.850654f	, 0.309011f,
-        -0.723600f	, 0.447215f	, 0.525720f,
-        -0.262869f	, 0.525738f	, 0.809012f,
-        // Face 66
-        -0.262869f	, 0.525738f	, 0.809012f,
-        0.162456f	, 0.850654f	, 0.499995f,
-        -0.425323f	, 0.850654f	, 0.309011f,
-        // Face 67
-        0.000000f	, 1.000000f	, -0.000000f,
-        -0.425323f	, 0.850654f	, 0.309011f,
-        0.162456f	, 0.850654f	, 0.499995f,
-        // Face 68
-        0.162456f	, 0.850654f	, 0.499995f,
-        -0.262869f	, 0.525738f	, 0.809012f,
-        0.276385f	, 0.447215f	, 0.850640f,
-        // Face 69
-        -0.425323f	, 0.850654f	, -0.309011f,
-        -0.723600f	, 0.447215f	, -0.525720f,
-        -0.850648f	, 0.525736f	, -0.000000f,
-        // Face 70
-        -0.850648f	, 0.525736f	, -0.000000f,
-        -0.425323f	, 0.850654f	, 0.309011f,
-        -0.425323f	, 0.850654f	, -0.309011f,
-        // Face 71
-        0.000000f	, 1.000000f	, -0.000000f,
-        -0.425323f	, 0.850654f	, -0.309011f,
-        -0.425323f	, 0.850654f	, 0.309011f,
-        // Face 72
-        -0.425323f	, 0.850654f	, 0.309011f,
-        -0.850648f	, 0.525736f	, -0.000000f,
-        -0.723600f	, 0.447215f	, 0.525720f,
-        // Face 73
-        0.162456f	, 0.850654f	, -0.499995f,
-        0.276385f	, 0.447215f	, -0.850640f,
-        -0.262869f	, 0.525738f	, -0.809012f,
-        // Face 74
-        -0.262869f	, 0.525738f	, -0.809012f,
-        -0.425323f	, 0.850654f	, -0.309011f,
-        0.162456f	, 0.850654f	, -0.499995f,
-        // Face 75
-        0.000000f	, 1.000000f	, -0.000000f,
-        0.162456f	, 0.850654f	, -0.499995f,
-        -0.425323f	, 0.850654f	, -0.309011f,
-        // Face 76
-        -0.425323f	, 0.850654f	, -0.309011f,
-        -0.262869f	, 0.525738f	, -0.809012f,
-        -0.723600f	, 0.447215f	, -0.525720f,
-        // Face 77
-        0.525730f	, 0.850652f	, -0.000000f,
-        0.894425f	, 0.447215f	, -0.000000f,
-        0.688189f	, 0.525736f	, -0.499997f,
-        // Face 78
-        0.688189f	, 0.525736f	, -0.499997f,
-        0.162456f	, 0.850654f	, -0.499995f,
-        0.525730f	, 0.850652f	, -0.000000f,
-        // Face 79
-        0.000000f	, 1.000000f	, -0.000000f,
-        0.525730f	, 0.850652f	, -0.000000f,
-        0.162456f	, 0.850654f	, -0.499995f,
-        // Face 80
-        0.162456f	, 0.850654f	, -0.499995f,
-        0.688189f	, 0.525736f	, -0.499997f,
-        0.276385f	, 0.447215f	, -0.850640f,
-    };
-
-    float textures[] = {
-        // Face 1
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 2
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 3
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 4
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 5
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 6
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 7
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 8
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 9
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 10
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 11
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 12
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 13
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 14
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 15
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 16
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 17
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 18
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 19
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 20
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 21
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 22
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 23
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 24
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 25
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 26
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 27
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 28
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 29
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 30
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 31
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 32
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 33
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 34
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 35
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 36
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 37
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 38
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 39
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 40
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 41
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 42
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 43
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 44
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 45
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 46
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 47
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 48
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 49
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 50
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 51
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 52
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 53
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 54
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 55
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 56
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 57
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 58
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 59
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 60
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 61
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 62
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 63
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 64
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 65
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 66
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 67
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 68
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 69
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 70
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 71
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 72
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 73
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 74
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 75
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 76
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 77
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 78
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 79
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-        // Face 80
-        0.000000f	, 0.000000f,
-        8.000000f	, 0.000000f,
-        8.000000f	, 8.000000f,
-    };
-    
-    float normals[] = {
-        // Face 1
-        0.471318f	, -0.661687f	, 0.583121f,
-        0.471318f	, -0.661687f	, 0.583121f,
-        0.471318f	, -0.661687f	, 0.583121f,
-        // Face 2
-        0.187594f	, -0.794658f	, 0.577345f,
-        0.187594f	, -0.794658f	, 0.577345f,
-        0.187594f	, -0.794658f	, 0.577345f,
-        // Face 3
-        -0.038547f	, -0.661687f	, 0.748789f,
-        -0.038547f	, -0.661687f	, 0.748789f,
-        -0.038547f	, -0.661687f	, 0.748789f,
-        // Face 4
-        0.102381f	, -0.943523f	, 0.315090f,
-        0.102381f	, -0.943523f	, 0.315090f,
-        0.102381f	, -0.943523f	, 0.315090f,
-        // Face 5
-        0.700228f	, -0.661687f	, 0.268049f,
-        0.700228f	, -0.661687f	, 0.268049f,
-        0.700228f	, -0.661687f	, 0.268049f,
-        // Face 6
-        0.607061f	, -0.794656f	, 0.000000f,
-        0.607061f	, -0.794656f	, 0.000000f,
-        0.607061f	, -0.794656f	, 0.000000f,
-        // Face 7
-        0.700228f	, -0.661688f	, -0.268049f,
-        0.700228f	, -0.661688f	, -0.268049f,
-        0.700228f	, -0.661688f	, -0.268049f,
-        // Face 8
-        0.331305f	, -0.943524f	, 0.000000f,
-        0.331305f	, -0.943524f	, 0.000000f,
-        0.331305f	, -0.943524f	, 0.000000f,
-        // Face 9
-        -0.408939f	, -0.661686f	, 0.628443f,
-        -0.408939f	, -0.661686f	, 0.628443f,
-        -0.408939f	, -0.661686f	, 0.628443f,
-        // Face 10
-        -0.491120f	, -0.794657f	, 0.356821f,
-        -0.491120f	, -0.794657f	, 0.356821f,
-        -0.491120f	, -0.794657f	, 0.356821f,
-        // Face 11
-        -0.724044f	, -0.661694f	, 0.194735f,
-        -0.724044f	, -0.661694f	, 0.194735f,
-        -0.724044f	, -0.661694f	, 0.194735f,
-        // Face 12
-        -0.268034f	, -0.943523f	, 0.194736f,
-        -0.268034f	, -0.943523f	, 0.194736f,
-        -0.268034f	, -0.943523f	, 0.194736f,
-        // Face 13
-        -0.724044f	, -0.661694f	, -0.194735f,
-        -0.724044f	, -0.661694f	, -0.194735f,
-        -0.724044f	, -0.661694f	, -0.194735f,
-        // Face 14
-        -0.491120f	, -0.794657f	, -0.356821f,
-        -0.491120f	, -0.794657f	, -0.356821f,
-        -0.491120f	, -0.794657f	, -0.356821f,
-        // Face 15
-        -0.408939f	, -0.661686f	, -0.628443f,
-        -0.408939f	, -0.661686f	, -0.628443f,
-        -0.408939f	, -0.661686f	, -0.628443f,
-        // Face 16
-        -0.268034f	, -0.943523f	, -0.194736f,
-        -0.268034f	, -0.943523f	, -0.194736f,
-        -0.268034f	, -0.943523f	, -0.194736f,
-        // Face 17
-        -0.038547f	, -0.661687f	, -0.748789f,
-        -0.038547f	, -0.661687f	, -0.748789f,
-        -0.038547f	, -0.661687f	, -0.748789f,
-        // Face 18
-        0.187594f	, -0.794658f	, -0.577345f,
-        0.187594f	, -0.794658f	, -0.577345f,
-        0.187594f	, -0.794658f	, -0.577345f,
-        // Face 19
-        0.471318f	, -0.661687f	, -0.583121f,
-        0.471318f	, -0.661687f	, -0.583121f,
-        0.471318f	, -0.661687f	, -0.583121f,
-        // Face 20
-        0.102381f	, -0.943523f	, -0.315090f,
-        0.102381f	, -0.943523f	, -0.315090f,
-        0.102381f	, -0.943523f	, -0.315090f,
-        // Face 21
-        0.904981f	, -0.330393f	, 0.268049f,
-        0.904981f	, -0.330393f	, 0.268049f,
-        0.904981f	, -0.330393f	, 0.268049f,
-        // Face 22
-        0.982246f	, -0.187599f	, 0.000000f,
-        0.982246f	, -0.187599f	, 0.000000f,
-        0.982246f	, -0.187599f	, 0.000000f,
-        // Face 23
-        0.992077f	, 0.125631f	, -0.000000f,
-        0.992077f	, 0.125631f	, -0.000000f,
-        0.992077f	, 0.125631f	, -0.000000f,
-        // Face 24
-        0.904981f	, -0.330393f	, -0.268049f,
-        0.904981f	, -0.330393f	, -0.268049f,
-        0.904981f	, -0.330393f	, -0.268049f,
-        // Face 25
-        0.024726f	, -0.330396f	, 0.943519f,
-        0.024726f	, -0.330396f	, 0.943519f,
-        0.024726f	, -0.330396f	, 0.943519f,
-        // Face 26
-        0.303531f	, -0.187597f	, 0.934171f,
-        0.303531f	, -0.187597f	, 0.934171f,
-        0.303531f	, -0.187597f	, 0.934171f,
-        // Face 27
-        0.306568f	, 0.125651f	, 0.943519f,
-        0.306568f	, 0.125651f	, 0.943519f,
-        0.306568f	, 0.125651f	, 0.943519f,
-        // Face 28
-        0.534590f	, -0.330395f	, 0.777851f,
-        0.534590f	, -0.330395f	, 0.777851f,
-        0.534590f	, -0.330395f	, 0.777851f,
-        // Face 29
-        -0.889698f	, -0.330386f	, 0.315092f,
-        -0.889698f	, -0.330386f	, 0.315092f,
-        -0.889698f	, -0.330386f	, 0.315092f,
-        // Face 30
-        -0.794656f	, -0.187595f	, 0.577348f,
-        -0.794656f	, -0.187595f	, 0.577348f,
-        -0.794656f	, -0.187595f	, 0.577348f,
-        // Face 31
-        -0.802607f	, 0.125648f	, 0.583125f,
-        -0.802607f	, 0.125648f	, 0.583125f,
-        -0.802607f	, 0.125648f	, 0.583125f,
-        // Face 32
-        -0.574584f	, -0.330397f	, 0.748793f,
-        -0.574584f	, -0.330397f	, 0.748793f,
-        -0.574584f	, -0.330397f	, 0.748793f,
-        // Face 33
-        -0.574584f	, -0.330397f	, -0.748793f,
-        -0.574584f	, -0.330397f	, -0.748793f,
-        -0.574584f	, -0.330397f	, -0.748793f,
-        // Face 34
-        -0.794655f	, -0.187595f	, -0.577348f,
-        -0.794655f	, -0.187595f	, -0.577348f,
-        -0.794655f	, -0.187595f	, -0.577348f,
-        // Face 35
-        -0.802607f	, 0.125648f	, -0.583125f,
-        -0.802607f	, 0.125648f	, -0.583125f,
-        -0.802607f	, 0.125648f	, -0.583125f,
-        // Face 36
-        -0.889698f	, -0.330386f	, -0.315092f,
-        -0.889698f	, -0.330386f	, -0.315092f,
-        -0.889698f	, -0.330386f	, -0.315092f,
-        // Face 37
-        0.534590f	, -0.330395f	, -0.777851f,
-        0.534590f	, -0.330395f	, -0.777851f,
-        0.534590f	, -0.330395f	, -0.777851f,
-        // Face 38
-        0.303531f	, -0.187597f	, -0.934171f,
-        0.303531f	, -0.187597f	, -0.934171f,
-        0.303531f	, -0.187597f	, -0.934171f,
-        // Face 39
-        0.306568f	, 0.125651f	, -0.943519f,
-        0.306568f	, 0.125651f	, -0.943519f,
-        0.306568f	, 0.125651f	, -0.943519f,
-        // Face 40
-        0.024726f	, -0.330396f	, -0.943519f,
-        0.024726f	, -0.330396f	, -0.943519f,
-        0.024726f	, -0.330396f	, -0.943519f,
-        // Face 41
-        0.889698f	, 0.330386f	, 0.315092f,
-        0.889698f	, 0.330386f	, 0.315092f,
-        0.889698f	, 0.330386f	, 0.315092f,
-        // Face 42
-        0.794655f	, 0.187595f	, 0.577348f,
-        0.794655f	, 0.187595f	, 0.577348f,
-        0.794655f	, 0.187595f	, 0.577348f,
-        // Face 43
-        0.574584f	, 0.330397f	, 0.748793f,
-        0.574584f	, 0.330397f	, 0.748793f,
-        0.574584f	, 0.330397f	, 0.748793f,
-        // Face 44
-        0.802607f	, -0.125648f	, 0.583125f,
-        0.802607f	, -0.125648f	, 0.583125f,
-        0.802607f	, -0.125648f	, 0.583125f,
-        // Face 45
-        -0.024726f	, 0.330396f	, 0.943519f,
-        -0.024726f	, 0.330396f	, 0.943519f,
-        -0.024726f	, 0.330396f	, 0.943519f,
-        // Face 46
-        -0.303531f	, 0.187597f	, 0.934171f,
-        -0.303531f	, 0.187597f	, 0.934171f,
-        -0.303531f	, 0.187597f	, 0.934171f,
-        // Face 47
-        -0.534590f	, 0.330395f	, 0.777851f,
-        -0.534590f	, 0.330395f	, 0.777851f,
-        -0.534590f	, 0.330395f	, 0.777851f,
-        // Face 48
-        -0.306568f	, -0.125651f	, 0.943519f,
-        -0.306568f	, -0.125651f	, 0.943519f,
-        -0.306568f	, -0.125651f	, 0.943519f,
-        // Face 49
-        -0.904981f	, 0.330393f	, 0.268049f,
-        -0.904981f	, 0.330393f	, 0.268049f,
-        -0.904981f	, 0.330393f	, 0.268049f,
-        // Face 50
-        -0.982246f	, 0.187599f	, -0.000000f,
-        -0.982246f	, 0.187599f	, -0.000000f,
-        -0.982246f	, 0.187599f	, -0.000000f,
-        // Face 51
-        -0.904981f	, 0.330393f	, -0.268049f,
-        -0.904981f	, 0.330393f	, -0.268049f,
-        -0.904981f	, 0.330393f	, -0.268049f,
-        // Face 52
-        -0.992077f	, -0.125631f	, 0.000000f,
-        -0.992077f	, -0.125631f	, 0.000000f,
-        -0.992077f	, -0.125631f	, 0.000000f,
-        // Face 53
-        -0.534590f	, 0.330395f	, -0.777851f,
-        -0.534590f	, 0.330395f	, -0.777851f,
-        -0.534590f	, 0.330395f	, -0.777851f,
-        // Face 54
-        -0.303531f	, 0.187597f	, -0.934171f,
-        -0.303531f	, 0.187597f	, -0.934171f,
-        -0.303531f	, 0.187597f	, -0.934171f,
-        // Face 55
-        -0.024726f	, 0.330396f	, -0.943519f,
-        -0.024726f	, 0.330396f	, -0.943519f,
-        -0.024726f	, 0.330396f	, -0.943519f,
-        // Face 56
-        -0.306568f	, -0.125651f	, -0.943519f,
-        -0.306568f	, -0.125651f	, -0.943519f,
-        -0.306568f	, -0.125651f	, -0.943519f,
-        // Face 57
-        0.574584f	, 0.330397f	, -0.748793f,
-        0.574584f	, 0.330397f	, -0.748793f,
-        0.574584f	, 0.330397f	, -0.748793f,
-        // Face 58
-        0.794656f	, 0.187595f	, -0.577348f,
-        0.794656f	, 0.187595f	, -0.577348f,
-        0.794656f	, 0.187595f	, -0.577348f,
-        // Face 59
-        0.889698f	, 0.330386f	, -0.315092f,
-        0.889698f	, 0.330386f	, -0.315092f,
-        0.889698f	, 0.330386f	, -0.315092f,
-        // Face 60
-        0.802607f	, -0.125648f	, -0.583125f,
-        0.802607f	, -0.125648f	, -0.583125f,
-        0.802607f	, -0.125648f	, -0.583125f,
-        // Face 61
-        0.408939f	, 0.661686f	, 0.628443f,
-        0.408939f	, 0.661686f	, 0.628443f,
-        0.408939f	, 0.661686f	, 0.628443f,
-        // Face 62
-        0.491120f	, 0.794657f	, 0.356821f,
-        0.491120f	, 0.794657f	, 0.356821f,
-        0.491120f	, 0.794657f	, 0.356821f,
-        // Face 63
-        0.268034f	, 0.943523f	, 0.194736f,
-        0.268034f	, 0.943523f	, 0.194736f,
-        0.268034f	, 0.943523f	, 0.194736f,
-        // Face 64
-        0.724044f	, 0.661694f	, 0.194735f,
-        0.724044f	, 0.661694f	, 0.194735f,
-        0.724044f	, 0.661694f	, 0.194735f,
-        // Face 65
-        -0.471318f	, 0.661687f	, 0.583121f,
-        -0.471318f	, 0.661687f	, 0.583121f,
-        -0.471318f	, 0.661687f	, 0.583121f,
-        // Face 66
-        -0.187594f	, 0.794658f	, 0.577345f,
-        -0.187594f	, 0.794658f	, 0.577345f,
-        -0.187594f	, 0.794658f	, 0.577345f,
-        // Face 67
-        -0.102381f	, 0.943523f	, 0.315090f,
-        -0.102381f	, 0.943523f	, 0.315090f,
-        -0.102381f	, 0.943523f	, 0.315090f,
-        // Face 68
-        0.038547f	, 0.661687f	, 0.748789f,
-        0.038547f	, 0.661687f	, 0.748789f,
-        0.038547f	, 0.661687f	, 0.748789f,
-        // Face 69
-        -0.700228f	, 0.661687f	, -0.268049f,
-        -0.700228f	, 0.661687f	, -0.268049f,
-        -0.700228f	, 0.661687f	, -0.268049f,
-        // Face 70
-        -0.607061f	, 0.794656f	, 0.000000f,
-        -0.607061f	, 0.794656f	, 0.000000f,
-        -0.607061f	, 0.794656f	, 0.000000f,
-        // Face 71
-        -0.331305f	, 0.943524f	, 0.000000f,
-        -0.331305f	, 0.943524f	, 0.000000f,
-        -0.331305f	, 0.943524f	, 0.000000f,
-        // Face 72
-        -0.700228f	, 0.661688f	, 0.268049f,
-        -0.700228f	, 0.661688f	, 0.268049f,
-        -0.700228f	, 0.661688f	, 0.268049f,
-        // Face 73
-        0.038547f	, 0.661687f	, -0.748789f,
-        0.038547f	, 0.661687f	, -0.748789f,
-        0.038547f	, 0.661687f	, -0.748789f,
-        // Face 74
-        -0.187594f	, 0.794658f	, -0.577345f,
-        -0.187594f	, 0.794658f	, -0.577345f,
-        -0.187594f	, 0.794658f	, -0.577345f,
-        // Face 75
-        -0.102381f	, 0.943523f	, -0.315090f,
-        -0.102381f	, 0.943523f	, -0.315090f,
-        -0.102381f	, 0.943523f	, -0.315090f,
-        // Face 76
-        -0.471318f	, 0.661687f	, -0.583121f,
-        -0.471318f	, 0.661687f	, -0.583121f,
-        -0.471318f	, 0.661687f	, -0.583121f,
-        // Face 77
-        0.724044f	, 0.661694f	, -0.194735f,
-        0.724044f	, 0.661694f	, -0.194735f,
-        0.724044f	, 0.661694f	, -0.194735f,
-        // Face 78
-        0.491120f	, 0.794657f	, -0.356821f,
-        0.491120f	, 0.794657f	, -0.356821f,
-        0.491120f	, 0.794657f	, -0.356821f,
-        // Face 79
-        0.268034f	, 0.943523f	, -0.194736f,
-        0.268034f	, 0.943523f	, -0.194736f,
-        0.268034f	, 0.943523f	, -0.194736f,
-        // Face 80
-        0.408939f	, 0.661686f	, -0.628443f,
-        0.408939f	, 0.661686f	, -0.628443f,
-        0.408939f	, 0.661686f	, -0.628443f,
-    };
- 
-    protected static int texture_drawable = R.drawable.marble;
+    private static final String MODEL_KEY = "asteroid";
 
     public AsteroidSprite(World world) {
         super(world);
     }
 
-    protected float[] getVertices() {
-        return vertices;
-    }
-
-    protected float[] getTextureVertices() {
-        return textures;
-    }
-
-    protected int getTextureDrawable() {
-        return texture_drawable;
+    protected Model getModel() {
+        return ObjLoader.get(MODEL_KEY);
     }
 
     public void tick() {
@@ -1572,157 +745,26 @@ class AsteroidSprite extends Sprite {
 }
 
 class BackgroundTile extends Tile {
-    float vertices[] = {
-        // Face 1
-        50.000000f	, -50.000000f	, -50.000000f,
-        50.000000f	, -50.000000f	, 50.000000f,
-        -50.000000f	, -50.000000f	, 50.000000f,
-        -50.000000f	, -50.000000f	, -50.000000f,
-        // Face 2
-        50.000000f	, 50.000000f	, -50.000000f,
-        -50.000000f	, 50.000000f	, -50.000000f,
-        -50.000000f	, 50.000000f	, 50.000000f,
-        0.999999f	, 50.000000f	, 50.000001f,
-        // Face 3
-        50.000000f	, -50.000000f	, -50.000000f,
-        50.000000f	, 50.000000f	, -50.000000f,
-        0.999999f	, 50.000000f	, 50.000001f,
-        50.000000f	, -50.000000f	, 50.000000f,
-        // Face 4
-        50.000000f	, -50.000000f	, 50.000000f,
-        0.999999f	, 50.000000f	, 50.000001f,
-        -50.000000f	, 50.000000f	, 50.000000f,
-        -50.000000f	, -50.000000f	, 50.000000f,
-        // Face 5
-        -50.000000f	, -50.000000f	, 50.000000f,
-        -50.000000f	, 50.000000f	, 50.000000f,
-        -50.000000f	, 50.000000f	, -50.000000f,
-        -50.000000f	, -50.000000f	, -50.000000f,
-        // Face 6
-        50.000000f	, 50.000000f	, -50.000000f,
-        50.000000f	, -50.000000f	, -50.000000f,
-        -50.000000f	, -50.000000f	, -50.000000f,
-        -50.000000f	, 50.000000f	, -50.000000f,
-    };
-
-    float textures[] = {
-        // Face 1
-        0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f,
-        1.000000f	, 1.000000f,
-        0.000000f	, 1.000000f,
-        // Face 2
-        0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f,
-        1.000000f	, 1.000000f,
-        0.000000f	, 1.000000f,
-        // Face 3
-        0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f,
-        1.000000f	, 1.000000f,
-        0.000000f	, 1.000000f,
-        // Face 4
-        0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f,
-        1.000000f	, 1.000000f,
-        0.000000f	, 1.000000f,
-        // Face 5
-        0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f,
-        1.000000f	, 1.000000f,
-        0.000000f	, 1.000000f,
-        // Face 6
-        0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f,
-        1.000000f	, 1.000000f,
-        0.000000f	, 1.000000f,
-    };
-
-    float normals[] = {
-        // Face 1
-        -0.000000f	, -1.000000f	, 0.000000f,
-        -0.000000f	, -1.000000f	, 0.000000f,
-        -0.000000f	, -1.000000f	, 0.000000f,
-        -0.000000f	, -1.000000f	, 0.000000f,
-        // Face 2
-        0.000000f	, 1.000000f	, -0.000000f,
-        0.000000f	, 1.000000f	, -0.000000f,
-        0.000000f	, 1.000000f	, -0.000000f,
-        0.000000f	, 1.000000f	, -0.000000f,
-        // Face 3
-        1.000000f	, 0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f	, 0.000000f,
-        1.000000f	, 0.000000f	, 0.000000f,
-        // Face 4
-        -0.000000f	, -0.000000f	, 1.000000f,
-        -0.000000f	, -0.000000f	, 1.000000f,
-        -0.000000f	, -0.000000f	, 1.000000f,
-        -0.000000f	, -0.000000f	, 1.000000f,
-        // Face 5
-        -1.000000f	, -0.000000f	, -0.000000f,
-        -1.000000f	, -0.000000f	, -0.000000f,
-        -1.000000f	, -0.000000f	, -0.000000f,
-        -1.000000f	, -0.000000f	, -0.000000f,
-        // Face 6
-        0.000000f	, 0.000000f	, -1.000000f,
-        0.000000f	, 0.000000f	, -1.000000f,
-        0.000000f	, 0.000000f	, -1.000000f,
-        0.000000f	, 0.000000f	, -1.000000f,
-    };
-
-
-    protected static int texture_drawable = R.drawable.space;
+    private static final String MODEL_KEY = "background";
 
     public BackgroundTile(World world) {
         super(world);
     }
 
-    protected float[] getVertices() {
-        return vertices;
-    }
-
-    protected float[] getTextureVertices() {
-        return textures;
-    }
-
-    protected int getTextureDrawable() {
-        return texture_drawable;
+    protected Model getModel() {
+        return ObjLoader.get(MODEL_KEY);
     }
 }
 
 class GroundTile extends Tile {
-    protected static float vertices[] = {
-
-        -25f , 0, -25f ,
-        25f  , 0, -25f ,
-        -25f , 0, 25f  ,
-        25f  , 0, 25f  ,
-    };
-
-    protected static float texture_vertices[] = {
-        0  , 4f ,
-        4f , 4f ,
-        0  , 0  ,
-        4f , 0
-    };
-
-    protected static int texture_drawable = R.drawable.checker;
+    private static final String MODEL_KEY = "ground";
 
     public GroundTile(World world) {
         super(world);
     }
 
-    protected float[] getVertices() {
-        return vertices;
-    }
-
-    protected float[] getTextureVertices() {
-        return texture_vertices;
-    }
-
-    protected int getTextureDrawable() {
-        return texture_drawable;
+    protected Model getModel() {
+        return ObjLoader.get(MODEL_KEY);
     }
 }
 
