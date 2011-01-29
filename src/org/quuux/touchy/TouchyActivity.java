@@ -51,38 +51,6 @@ public class TouchyActivity extends Activity
         TextureLoader.init(this);
 
         AsteroidCommandWorld world = new AsteroidCommandWorld();
-        
-        Random random = new Random();
-        int num_asteroids = 50;
-        for(int i=0; i<num_asteroids; i++) {
-            AsteroidSprite a = new AsteroidSprite(world);
-
-            a.position.x = (random.nextFloat() * 40.0f) - 10f;
-            a.position.y = 20f;
-            a.position.z = (random.nextFloat() * 40.0f) - 10f;
-            
-            a.velocity.x = (random.nextFloat() * .02f) - .1f;
-            a.velocity.y = -.1f;
-            a.velocity.z = (random.nextFloat() * .02f) - .1f;
-
-            a.angular_velocity.x = random.nextFloat() * -.01f;
-            a.angular_velocity.y = random.nextFloat() * -.01f;
-            a.angular_velocity.z = random.nextFloat() * -.01f;
-
-            //a.rotation.z = random.nextFloat() * 360.0f;
-            //a.angular_velocity.z = random.nextFloat() - .5f;
-
-            world.asteroids.add(a);
-        }
-
-        BackgroundTile b = new BackgroundTile(world);        
-        world.statics.add(b);
-
-        GroundTile g = new GroundTile(world);
-        world.statics.add(g);
-
-        world.ground = g;
-
         Camera camera = new Camera();
 
         TouchyRenderer renderer = new TouchyRenderer(world, camera);
@@ -695,6 +663,40 @@ class AsteroidCommandWorld extends World {
     public SpriteGroup stations    = new SpriteGroup();
 
     public Tile ground;
+    public Tile sky;
+
+    public int num_asteroids = 50;
+
+    public AsteroidCommandWorld() {
+
+        sky = new BackgroundTile(this);
+        statics.add(sky);
+
+        ground = new GroundTile(this);
+        statics.add(ground);
+        
+        Random random = new Random();
+        for(int i=0; i<num_asteroids; i++) {
+            AsteroidSprite a = new AsteroidSprite(this);
+
+            a.position.x = (random.nextFloat() * 50.0f) - 25f;
+            a.position.y = 30f;
+            a.position.z = (random.nextFloat() * 50.0f) - 25f;
+            
+            a.velocity.x = 0;
+            a.velocity.y = -.08f;
+            a.velocity.z = 0;
+
+            a.angular_velocity.x = random.nextFloat() * -.01f;
+            a.angular_velocity.y = random.nextFloat() * -.01f;
+            a.angular_velocity.z = random.nextFloat() * -.01f;
+
+            //a.rotation.z = random.nextFloat() * 360.0f;
+            //a.angular_velocity.z = random.nextFloat() - .5f;
+
+            asteroids.add(a);
+        }
+    }
 
     public void draw(GL10 gl) {
         statics.draw(gl);
@@ -726,7 +728,19 @@ class AsteroidCommandWorld extends World {
         for(Tile t: asteroids.getTiles()) {
             if(ground.contains(t)) {
 
-                Log.d(TAG, "bounce");
+                Log.d(TAG, "ground bounce");
+
+                Sprite s = (Sprite)t;
+                s.velocity.x *= -1;
+                s.velocity.y *= -1;
+                s.velocity.z *= -1;                
+            }
+        }
+
+
+        for(Tile t: asteroids.getTiles()) {
+            if(sky.contains(t)) {
+                Log.d(TAG, "sky bounce");
 
                 Sprite s = (Sprite)t;
                 s.velocity.x *= -1;
@@ -755,11 +769,19 @@ class BackgroundTile extends Tile {
 
     public BackgroundTile(World world) {
         super(world);
-        scale    = new Vector3(50f, 50f, 50f);
+        scale = new Vector3(50f, 50f, 50f);
     }
 
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
+    }
+
+    public boolean contains(Tile o) {
+        double d = Math.sqrt(  Math.pow(o.position.x, 2) + 
+                               Math.pow(o.position.y, 2) + 
+                               Math.pow(o.position.z, 2) );
+
+        return d >= 50f;
     }
 }
 
