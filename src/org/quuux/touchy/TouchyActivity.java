@@ -112,6 +112,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
         gl.glEnable(GL10.GL_TEXTURE_2D);
         gl.glEnable(GL10.GL_BLEND);
+        gl.glEnable(GL10.GL_DEPTH_TEST);
         gl.glBlendFunc(GL10.GL_ONE, GL10.GL_ONE_MINUS_SRC_ALPHA);
         gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, 
                      /*GL10.GL_REPLACE*/ GL10.GL_MODULATE);
@@ -164,7 +165,7 @@ class Camera {
         center = new Vector3(0, 0, 0);
         up = new Vector3(0f, 1f, 0f);    
         rotation = new Vector3(0, 0, 0);
-        fov = 60f;
+        fov = 45f;
         znear = .1f;
         zfar = 100f;
     }
