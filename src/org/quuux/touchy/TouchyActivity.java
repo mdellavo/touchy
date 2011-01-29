@@ -57,12 +57,12 @@ public class TouchyActivity extends Activity
         for(int i=0; i<num_asteroids; i++) {
             AsteroidSprite a = new AsteroidSprite(world);
 
-            a.position.x = (random.nextFloat() * 20.0f) - 10f;
-            a.position.y = (random.nextFloat() * 20.0f);
-            a.position.z = (random.nextFloat() * 20.0f) - 10f;
+            a.position.x = (random.nextFloat() * 40.0f) - 10f;
+            a.position.y = 20f;
+            a.position.z = (random.nextFloat() * 40.0f) - 10f;
             
             a.velocity.x = (random.nextFloat() * .02f) - .1f;
-            a.velocity.y = (random.nextFloat() * .02f) - .1f;
+            a.velocity.y = -.1f;
             a.velocity.z = (random.nextFloat() * .02f) - .1f;
 
             a.angular_velocity.x = random.nextFloat() * -.01f;
@@ -75,11 +75,13 @@ public class TouchyActivity extends Activity
             world.asteroids.add(a);
         }
 
-        // BackgroundTile b = new BackgroundTile(world);        
-        // world.statics.add(b);
+        BackgroundTile b = new BackgroundTile(world);        
+        world.statics.add(b);
 
         GroundTile g = new GroundTile(world);
         world.statics.add(g);
+
+        world.ground = g;
 
         Camera camera = new Camera();
 
@@ -194,7 +196,7 @@ class Camera {
         center = new Vector3(0, 0, 0);
         up = new Vector3(0f, 1f, 0f);    
         rotation = new Vector3(0, 0, 0);
-        fov = 90f;
+        fov = 60f;
         znear = .1f;
         zfar = 100f;
     }
@@ -223,7 +225,7 @@ class Camera {
     }
 
     void tick() {
-        //rotation.y += .0001f;
+        rotation.y += .0001f;
     }
 }
 
@@ -285,7 +287,7 @@ class Model {
                  Vector<Vector3> normals, Bitmap texture) {
 
         this.vertices = loadVertices(vertices);
-        this.uvs = loadVertices(uvs);
+        this.uvs = loadUVs(uvs);
         this.normals = loadVertices(normals);
 
         this.texture = texture;
@@ -297,6 +299,23 @@ class Model {
         color[3] = 1.0f;
     }
 
+    protected FloatBuffer loadUVs(Vector<Vector3> vertices) {
+        num_vertices = vertices.size()*2;
+        ByteBuffer byte_buffer = ByteBuffer.allocateDirect(num_vertices*4);
+        byte_buffer.order(ByteOrder.nativeOrder());
+
+        FloatBuffer rv = byte_buffer.asFloatBuffer();
+
+        for(Vector3 vertex : vertices) {
+            rv.put(vertex.x);
+            rv.put(vertex.y);
+        }
+
+        rv.position(0);
+
+        return rv;
+    }
+
     protected FloatBuffer loadVertices(Vector<Vector3> vertices) {
         num_vertices = vertices.size()*3;
         ByteBuffer byte_buffer = ByteBuffer.allocateDirect(num_vertices*4);
@@ -305,8 +324,6 @@ class Model {
         FloatBuffer rv = byte_buffer.asFloatBuffer();
 
         for(Vector3 vertex : vertices) {
-            Log.d(TAG, "Loading vertex" + vertex);
-
             rv.put(vertex.x);
             rv.put(vertex.y);
             rv.put(vertex.z);
@@ -400,10 +417,6 @@ class ObjLoader {
     }
 
     protected static Vector3 parsePoint(String[] parts) {
-        Log.d(TAG, "parts: " + java.util.Arrays.deepToString(parts));
-
-        
-
         return new Vector3( Float.valueOf(parts[1]), 
                             Float.valueOf(parts[2]), 
                             parts.length>3 ? Float.valueOf(parts[3]) : 0 );
@@ -467,10 +480,6 @@ class ObjLoader {
 
                     Vector3[][] face = parseFace(v, vt, vn, parts);
                     Vector vectors[] = {vertices, uvs, normals};
-
-
-                    Log.d(TAG, "Face: " + face);
-
 
                     for(int i=0; i<vectors.length; i++)
                         for(int j=0; j<face[i].length; j++)
@@ -685,6 +694,8 @@ class AsteroidCommandWorld extends World {
     public SpriteGroup projectiles = new SpriteGroup();
     public SpriteGroup stations    = new SpriteGroup();
 
+    public Tile ground;
+
     public void draw(GL10 gl) {
         statics.draw(gl);
         asteroids.draw(gl);
@@ -711,6 +722,18 @@ class AsteroidCommandWorld extends World {
             s.velocity.y *= -1;
             s.velocity.z *= -1;
         }        
+
+        for(Tile t: asteroids.getTiles()) {
+            if(ground.contains(t)) {
+
+                Log.d(TAG, "bounce");
+
+                Sprite s = (Sprite)t;
+                s.velocity.x *= -1;
+                s.velocity.y *= -1;
+                s.velocity.z *= -1;                
+            }
+        }
     }
 }
 
@@ -725,23 +748,6 @@ class AsteroidSprite extends Sprite {
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
     }
-
-    public void tick() {
-        super.tick();
-        
-        if(position.x <= -world.width || position.x >= world.width) {
-            velocity.x *= -1;
-        }
-        
-        if(position.y <= 0 || position.y >= world.height) {
-            velocity.y *= -1;
-        }
-
-        if(position.z <= -world.depth || position.z >= world.depth) {
-            velocity.z *= -1;
-        }
-
-    }
 }
 
 class BackgroundTile extends Tile {
@@ -749,6 +755,7 @@ class BackgroundTile extends Tile {
 
     public BackgroundTile(World world) {
         super(world);
+        scale    = new Vector3(50f, 50f, 50f);
     }
 
     protected Model getModel() {
@@ -757,14 +764,26 @@ class BackgroundTile extends Tile {
 }
 
 class GroundTile extends Tile {
+    private static final String TAG = "GroundTile";
     private static final String MODEL_KEY = "ground";
 
     public GroundTile(World world) {
         super(world);
+
+        position = new Vector3(0f, -35f, 0f);
+        scale    = new Vector3(25f, 25f, 25f);
     }
 
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
+    }
+
+    public boolean contains(Tile o) {
+        double d = Math.sqrt(  Math.pow(o.position.x - position.x, 2) + 
+                               Math.pow(o.position.y - position.y, 2) + 
+                               Math.pow(o.position.z - position.z, 2) );
+
+        return d <= 25f;
     }
 }
 
