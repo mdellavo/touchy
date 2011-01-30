@@ -35,6 +35,8 @@ import java.io.IOException;
 
 public class TouchyActivity extends Activity
 {
+    private static final String TAG = "TouchyActivity";
+
     private TouchyGLSurfaceView view;
 
     @Override
@@ -44,6 +46,8 @@ public class TouchyActivity extends Activity
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                              WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         view = new TouchyGLSurfaceView(this);
 
@@ -73,18 +77,24 @@ public class TouchyActivity extends Activity
 
 class TouchyGLSurfaceView extends GLSurfaceView {
 
+    protected static final String TAG = "TouchyGLSurfaceView";
+
     public TouchyGLSurfaceView(Context context) {
         super(context);
     }
 
     public boolean onTouchEvent(final MotionEvent event) {
 
-        // queueEvent(new Runnable() {
-        //         public void run() {
-        //         }
-        //     }
-        // );
-
+        queueEvent(new Runnable() {
+                public void run() {
+                    
+                    Log.d(TAG, "Touch: " + event);
+                    
+                    
+                }
+            }
+        );
+        
         return true;
     }
 }
@@ -525,11 +535,11 @@ abstract class Tile implements Drawable {
     public void draw(GL10 gl) {
         gl.glPushMatrix();
 
+        gl.glTranslatef(position.x, position.y, position.z);
+        gl.glScalef(scale.x, scale.y, scale.z);
         gl.glRotatef(rotation.x, 1f, 0, 0);
         gl.glRotatef(rotation.y, 0, 1f, 0);
         gl.glRotatef(rotation.z, 0, 0, 1f);    
-        gl.glTranslatef(position.x, position.y, position.z);
-        gl.glScalef(scale.x, scale.y, scale.z);
 
         model.draw(gl);
 
@@ -680,20 +690,25 @@ class AsteroidCommandWorld extends World {
         for(int i=0; i<num_asteroids; i++) {
             AsteroidSprite a = new AsteroidSprite(this);
 
+            a.scale.x = random.nextFloat();
+            a.scale.y = random.nextFloat();
+            a.scale.z = random.nextFloat();
+
             a.position.x = (random.nextFloat() * 50.0f) - 25f;
-            a.position.y = 30f;
+            a.position.y = 0;
             a.position.z = (random.nextFloat() * 50.0f) - 25f;
             
-            a.velocity.x = 0;
+            a.velocity.x = random.nextFloat() * .01f;
             a.velocity.y = -.08f;
-            a.velocity.z = 0;
+            a.velocity.z = random.nextFloat() * .01f;
 
-            a.angular_velocity.x = random.nextFloat() * -.01f;
-            a.angular_velocity.y = random.nextFloat() * -.01f;
-            a.angular_velocity.z = random.nextFloat() * -.01f;
+            a.rotation.x = random.nextFloat() * 360.0f;
+            a.rotation.y = random.nextFloat() * 360.0f;
+            a.rotation.z = random.nextFloat() * 360.0f;            
 
-            //a.rotation.z = random.nextFloat() * 360.0f;
-            //a.angular_velocity.z = random.nextFloat() - .5f;
+            a.angular_velocity.x = random.nextFloat();
+            a.angular_velocity.y = random.nextFloat();
+            a.angular_velocity.z = random.nextFloat();
 
             asteroids.add(a);
         }
