@@ -15,14 +15,17 @@ import android.graphics.BitmapFactory;
 import android.util.Log;
 import android.util.DisplayMetrics;
 import android.content.res.AssetManager;
+import android.os.Build;
 
 import java.nio.FloatBuffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL;
 import javax.microedition.khronos.opengles.GL10;
 
+import java.util.Arrays;
 import java.util.Vector;
 import java.util.Map;
 import java.util.HashMap;
@@ -49,8 +52,6 @@ public class TouchyActivity extends Activity
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        view = new TouchyGLSurfaceView(this);
-
         ObjLoader.init(this);
         TextureLoader.init(this);
 
@@ -58,7 +59,15 @@ public class TouchyActivity extends Activity
         Camera camera = new Camera();
 
         TouchyRenderer renderer = new TouchyRenderer(world, camera);
-        view.setRenderer(renderer);
+
+        view = new TouchyGLSurfaceView(this, renderer);
+
+        view.setGLWrapper(new GLSurfaceView.GLWrapper() {
+                public GL wrap(GL gl) {
+                    return new MatrixTrackingGL(gl);
+                }
+            });
+
         setContentView(view);                
     }
 
@@ -79,21 +88,58 @@ class TouchyGLSurfaceView extends GLSurfaceView {
 
     protected static final String TAG = "TouchyGLSurfaceView";
 
-    public TouchyGLSurfaceView(Context context) {
+    protected TouchyRenderer renderer;
+
+    public TouchyGLSurfaceView(Context context, TouchyRenderer renderer) {
         super(context);
+
+        this.renderer = renderer;
+        this.setRenderer(renderer);
     }
 
     public boolean onTouchEvent(final MotionEvent event) {
 
-        queueEvent(new Runnable() {
-                public void run() {
+        if(event.getAction() == MotionEvent.ACTION_DOWN) {
+            queueEvent(new Runnable() {
+                    public void run() {
+
+                        int width = TouchyGLSurfaceView.this.getWidth();
+                        int height = TouchyGLSurfaceView.this.getHeight();
+
+                        int[] view = new int[] {0, 0, width, height};
+
+                        Log.d(TAG, "Touch: " + event);
+                        Log.d(TAG, "Height: " + height);
+                        Log.d(TAG, "Width: " + width);
                     
-                    Log.d(TAG, "Touch: " + event);
+                        Log.d(TAG, "Current Projection: " + 
+                              Arrays.toString(renderer.getCurrentProjection()));
+
+                        Log.d(TAG, "Current Model View: " + 
+                              Arrays.toString(renderer.getCurrentModelView()));
                     
                     
+                        float[] touch_position = new float[4];
+                        int rv = GLU.gluUnProject(event.getX(), view[3] - event.getY(), 1f, 
+                                                  renderer.getCurrentModelView(), 0, 
+                                                  renderer.getCurrentProjection(), 0, 
+                                                  view, 0,
+                                                  touch_position, 0);
+
+                        Log.d(TAG, "unproject rv: " + rv);
+
+                        touch_position[0] /= touch_position[3];
+                        touch_position[1] /= touch_position[3];
+                        touch_position[2] /= touch_position[3];
+                        touch_position[3] /= touch_position[3];
+
+                        Log.d(TAG, "touch_position: " + 
+                              Arrays.toString(touch_position));
+
+                    }
                 }
-            }
-        );
+                );
+        }
         
         return true;
     }
@@ -109,12 +155,38 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     protected int frames;
     protected long last;
 
+    protected MatrixGrabber matrix_grabber;
+
     public TouchyRenderer(World world, Camera camera) {
         this.world = world;
         this.camera = camera;
+
+        matrix_grabber = new MatrixGrabber();
+    }
+
+    public float[] getCurrentProjection() {
+        return matrix_grabber.mProjection;
+    }
+
+    public float[] getCurrentModelView() {
+        return matrix_grabber.mModelView;
     }
 
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+
+        Log.d(TAG, "Display: " + Build.DISPLAY);
+        Log.d(TAG, "Manufacturer: " + Build.MANUFACTURER);
+        Log.d(TAG, "Model: " + Build.MODEL);
+        Log.d(TAG, "Product: " + Build.PRODUCT);
+        Log.d(TAG, "Device: " + Build.DEVICE);
+        Log.d(TAG, "Brand: " + Build.BRAND);
+
+        Log.d(TAG, "Hardware: " + Build.HARDWARE);
+        Log.d(TAG, "Vendor: " + gl.glGetString(GL10.GL_VENDOR));
+        Log.d(TAG, "Renderer: " + gl.glGetString(GL10.GL_RENDERER));
+        Log.d(TAG, "Version: " + gl.glGetString(GL10.GL_VERSION));
+        Log.d(TAG, "Extensions: " + gl.glGetString(GL10.GL_EXTENSIONS));
+
         gl.glClearColor(0f,0f,0f, 0.5f);
 
         gl.glShadeModel(GL10.GL_SMOOTH);
@@ -132,7 +204,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
         Log.d(TAG, "surface created: " + width + "x" + height);
         
-        camera.setup(gl, width, height);
+        camera.setup(gl, width, height);       
         world.load(gl);
     }
 
@@ -149,6 +221,8 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
         camera.update(gl);
  
+        matrix_grabber.getCurrentState(gl);
+
         // draw sprites
         world.draw(gl);
 
@@ -171,7 +245,7 @@ class Camera {
     protected float zfar;
 
     public Camera() {
-        eye = new Vector3(25, 0, 25);
+        eye = new Vector3(0, 0, 25);
         center = new Vector3(0, 0, 0);
         up = new Vector3(0f, 1f, 0f);    
         rotation = new Vector3(0, 0, 0);
@@ -180,7 +254,7 @@ class Camera {
         zfar = 100f;
     }
 
-    void setup(GL10 gl, int width, int height) {
+    public void setup(GL10 gl, int width, int height) {
         gl.glViewport(0, 0, width, height);        
 
         gl.glMatrixMode(GL10.GL_PROJECTION);
@@ -196,16 +270,17 @@ class Camera {
                           up.x, up.y, up.z );
     }
 
-    // FIXME add transation and other 
-    void update(GL10 gl) {
+    // FIXME add translation, zoom, etc
+    public void update(GL10 gl) {
         gl.glRotatef(rotation.x, 1f, 1f, 0);
         gl.glRotatef(rotation.y, 0, 1f, 0);
         gl.glRotatef(rotation.z, 0, 1f, 1f);
     }
 
-    void tick() {
-        rotation.y += .0001f;
+    public void tick() {
+        //rotation.y += .0001f;
     }
+
 }
 
 class TextureLoader {
@@ -486,8 +561,23 @@ interface Tickable {
     void tick();
 }
 
+class Vector2 {
+    public float x, y;
+
+    public Vector2() {}
+    
+    public Vector2(float x, float y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public String toString() {
+        return "Vector2(" + this.x + ", " + this.y + ")";
+    }
+}
+
 class Vector3 {
-    public float x, y, z;
+    public float x,y,z;
 
     public Vector3() {}
 
@@ -620,6 +710,7 @@ class Sprite extends Tile implements Tickable {
         angular_acceleration = new Vector3();
     }
 
+    // FIXME proper math funcions in Vector3
     public void tick() {
         velocity.x = velocity.x + acceleration.x;
         velocity.y = velocity.y + acceleration.y;
@@ -657,8 +748,6 @@ class SpriteGroup extends TileGroup implements Tickable {
 }
 
 abstract class World implements Drawable, Tickable {
-    public int width = 25, height = 25, depth = 25;
-
     abstract public void draw(GL10 gl);
     abstract public void load(GL10 gl);
     abstract public void tick();
@@ -772,6 +861,19 @@ class AsteroidSprite extends Sprite {
     private static final String MODEL_KEY = "asteroid";
 
     public AsteroidSprite(World world) {
+        super(world);
+    }
+
+    protected Model getModel() {
+        return ObjLoader.get(MODEL_KEY);
+    }
+}
+
+class RocketSprite extends Sprite {
+
+    private static final String MODEL_KEY = "rocket";
+
+    public RocketSprite(World world) {
         super(world);
     }
 
