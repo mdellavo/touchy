@@ -97,45 +97,39 @@ class TouchyGLSurfaceView extends GLSurfaceView {
         this.setRenderer(renderer);
     }
 
+    public Vector3 projectTouchToWorld(float x, float y) {
+        int width = renderer.getWidth();
+        int height = renderer.getHeight();
+
+        int[] view = new int[] {0, 0, width, height};
+
+        float[] touch_position = new float[4];
+        int rv = GLU.gluUnProject(x, view[3] - y, 1f, 
+                                  renderer.getCurrentModelView(), 0, 
+                                  renderer.getCurrentProjection(), 0, 
+                                  view, 0,
+                                  touch_position, 0);
+
+        touch_position[0] /= touch_position[3];
+        touch_position[1] /= touch_position[3];
+        touch_position[2] /= touch_position[3];
+        touch_position[3] /= touch_position[3];
+
+        return new Vector3(touch_position[0], 
+                           touch_position[1], 
+                           touch_position[2]); 
+    }
+
     public boolean onTouchEvent(final MotionEvent event) {
 
         if(event.getAction() == MotionEvent.ACTION_DOWN) {
             queueEvent(new Runnable() {
                     public void run() {
+                        Vector3 vec = projectTouchToWorld(event.getX(), 
+                                                          event.getY());
 
-                        int width = TouchyGLSurfaceView.this.getWidth();
-                        int height = TouchyGLSurfaceView.this.getHeight();
-
-                        int[] view = new int[] {0, 0, width, height};
-
-                        Log.d(TAG, "Touch: " + event);
-                        Log.d(TAG, "Height: " + height);
-                        Log.d(TAG, "Width: " + width);
-                    
-                        Log.d(TAG, "Current Projection: " + 
-                              Arrays.toString(renderer.getCurrentProjection()));
-
-                        Log.d(TAG, "Current Model View: " + 
-                              Arrays.toString(renderer.getCurrentModelView()));
-                    
-                    
-                        float[] touch_position = new float[4];
-                        int rv = GLU.gluUnProject(event.getX(), view[3] - event.getY(), 1f, 
-                                                  renderer.getCurrentModelView(), 0, 
-                                                  renderer.getCurrentProjection(), 0, 
-                                                  view, 0,
-                                                  touch_position, 0);
-
-                        Log.d(TAG, "unproject rv: " + rv);
-
-                        touch_position[0] /= touch_position[3];
-                        touch_position[1] /= touch_position[3];
-                        touch_position[2] /= touch_position[3];
-                        touch_position[3] /= touch_position[3];
-
-                        Log.d(TAG, "touch_position: " + 
-                              Arrays.toString(touch_position));
-
+                        AsteroidCommandWorld world = (AsteroidCommandWorld)renderer.getWorld();
+                        world.fireAt(vec);
                     }
                 }
                 );
@@ -155,6 +149,9 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     protected int frames;
     protected long last;
 
+    protected int width;
+    protected int height;
+
     protected MatrixGrabber matrix_grabber;
 
     public TouchyRenderer(World world, Camera camera) {
@@ -170,6 +167,22 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
     public float[] getCurrentModelView() {
         return matrix_grabber.mModelView;
+    }
+
+    public World getWorld() {
+        return world;
+    }
+
+    public Camera getCamera() {
+        return camera;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public int getHeight() {
+        return height;
     }
 
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
@@ -201,6 +214,8 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
    }
 
     public void onSurfaceChanged(GL10 gl, int width, int height) {
+        this.width = width;
+        this.height = height;
 
         Log.d(TAG, "surface created: " + width + "x" + height);
         
@@ -571,6 +586,26 @@ class Vector2 {
         this.y = y;
     }
 
+    public Vector2(Vector2 v) {
+        x = v.x;
+        y = v.y; 
+    }
+
+    public float magnitude() {
+        return (float)Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
+    }
+
+    public void normalize() { 
+        float mag = magnitude();
+        x /= mag;
+        y /= mag;
+    }
+
+    public void scale(float factor) {
+        x /= factor;
+        y /= factor;
+    }
+
     public String toString() {
         return "Vector2(" + this.x + ", " + this.y + ")";
     }
@@ -585,6 +620,29 @@ class Vector3 {
         this.x = x;
         this.y = y;
         this.z = z;
+    }
+
+    public Vector3(Vector3 v) {
+        x = v.x;
+        y = v.y; 
+        z = v.z;
+    }
+
+    public float magnitude() {
+        return (float)Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
+    }
+
+    public void normalize() { 
+        float mag = magnitude();
+        x /= mag;
+        y /= mag;
+        z /= mag;
+    }
+
+    public void scale(float factor) {
+        x /= factor;
+        y /= factor;
+        z /= factor;
     }
 
     public String toString() {
@@ -854,6 +912,13 @@ class AsteroidCommandWorld extends World {
             }
         }
     }
+
+    public void fireAt(Vector3 p) {
+        Log.d(TAG, "Firing at " + p);
+
+        RocketSprite r = new RocketSprite(this, p);
+        projectiles.add(r);
+    }
 }
 
 class AsteroidSprite extends Sprite {
@@ -873,8 +938,14 @@ class RocketSprite extends Sprite {
 
     private static final String MODEL_KEY = "rocket";
 
-    public RocketSprite(World world) {
+    public RocketSprite(World world, Vector3 target) {
         super(world);
+        
+        velocity = new Vector3(target);
+        velocity.normalize();
+        velocity.scale();
+
+        acceleration = new Vector3(velocity);
     }
 
     protected Model getModel() {
@@ -898,7 +969,6 @@ class BackgroundTile extends Tile {
         double d = Math.sqrt(  Math.pow(o.position.x, 2) + 
                                Math.pow(o.position.y, 2) + 
                                Math.pow(o.position.z, 2) );
-
         return d >= 50f;
     }
 }
