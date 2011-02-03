@@ -803,6 +803,10 @@ class SpriteGroup extends TileGroup implements Tickable {
             ((Sprite)t).tick();
         }
     }
+
+    public Vector<Sprite> getSprites() {
+        return (Vector<Sprite>)tiles;
+    }
 }
 
 abstract class World implements Drawable, Tickable {
@@ -911,6 +915,11 @@ class AsteroidCommandWorld extends World {
                 s.velocity.z *= -1;                
             }
         }
+
+        for(Sprite s: projectiles.getSprites()) {
+            if(s.magnitude() > 50f)
+                projectiles.remove(s);
+        }       
     }
 
     public void fireAt(Vector3 p) {
@@ -943,7 +952,7 @@ class RocketSprite extends Sprite {
         
         velocity = new Vector3(target);
         velocity.normalize();
-        velocity.scale();
+        velocity.scale(.001f);
 
         acceleration = new Vector3(velocity);
     }
