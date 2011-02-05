@@ -25,6 +25,7 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL;
 import javax.microedition.khronos.opengles.GL10;
 
+import java.util.Iterator;
 import java.util.Arrays;
 import java.util.Vector;
 import java.util.Map;
@@ -121,7 +122,8 @@ class TouchyGLSurfaceView extends GLSurfaceView {
     }
 
     public boolean onTouchEvent(final MotionEvent event) {
-
+        
+        // FIXME throws a concurrent modification exc if not guarded?
         if(event.getAction() == MotionEvent.ACTION_DOWN) {
             queueEvent(new Runnable() {
                     public void run() {
@@ -131,8 +133,7 @@ class TouchyGLSurfaceView extends GLSurfaceView {
                         AsteroidCommandWorld world = (AsteroidCommandWorld)renderer.getWorld();
                         world.fireAt(vec);
                     }
-                }
-                );
+                });
         }
         
         return true;
@@ -602,8 +603,8 @@ class Vector2 {
     }
 
     public void scale(float factor) {
-        x /= factor;
-        y /= factor;
+        x *= factor;
+        y *= factor;
     }
 
     public String toString() {
@@ -640,9 +641,9 @@ class Vector3 {
     }
 
     public void scale(float factor) {
-        x /= factor;
-        y /= factor;
-        z /= factor;
+        x *= factor;
+        y *= factor;
+        z *= factor;
     }
 
     public String toString() {
@@ -803,10 +804,6 @@ class SpriteGroup extends TileGroup implements Tickable {
             ((Sprite)t).tick();
         }
     }
-
-    public Vector<Sprite> getSprites() {
-        return (Vector<Sprite>)tiles;
-    }
 }
 
 abstract class World implements Drawable, Tickable {
@@ -916,10 +913,17 @@ class AsteroidCommandWorld extends World {
             }
         }
 
-        for(Sprite s: projectiles.getSprites()) {
-            if(s.magnitude() > 50f)
-                projectiles.remove(s);
-        }       
+        Vector<Tile> tiles = projectiles.getTiles();    
+        Iterator<Tile> iter = tiles.iterator();
+
+        while(iter.hasNext()) {
+            Tile t = iter.next();
+
+            if(t.position.magnitude() > 50f) {
+                Log.d(TAG, "rocket out");
+                iter.remove();
+            }
+        }
     }
 
     public void fireAt(Vector3 p) {
@@ -952,7 +956,7 @@ class RocketSprite extends Sprite {
         
         velocity = new Vector3(target);
         velocity.normalize();
-        velocity.scale(.001f);
+        velocity.scale(.01f);
 
         acceleration = new Vector3(velocity);
     }
