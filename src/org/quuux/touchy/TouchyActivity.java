@@ -123,7 +123,6 @@ class TouchyGLSurfaceView extends GLSurfaceView {
 
     public boolean onTouchEvent(final MotionEvent event) {
         
-        // FIXME throws a concurrent modification exc if not guarded?
         if(event.getAction() == MotionEvent.ACTION_DOWN) {
             queueEvent(new Runnable() {
                     public void run() {
@@ -250,6 +249,14 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     }
 }
 
+class RandomGenerator {
+    protected static Random random = new Random();
+   
+    public static float randomRange(float min, float max) {
+        return min + ((max-min) * random.nextFloat());
+    }        
+}
+
 class Camera {
 
     protected Vector3 eye;
@@ -267,7 +274,7 @@ class Camera {
         rotation = new Vector3(0, 0, 0);
         fov = 45f;
         znear = .1f;
-        zfar = 100f;
+        zfar = 1000f;
     }
 
     public void setup(GL10 gl, int width, int height) {
@@ -711,6 +718,10 @@ abstract class Tile implements Drawable {
     }
 }
 
+abstract class CollisionListener {
+    abstract public void onCollision(Tile a, Tile b);
+}
+
 class TileGroup implements Drawable {
     private static final String TAG = "TileGroup";
 
@@ -734,20 +745,20 @@ class TileGroup implements Drawable {
         return tiles;
     }
 
-    // FIXME pass in output param to avoid churning objects ?
-    public Vector<Tile> collide(TileGroup others) {
+    public int collide(TileGroup others, CollisionListener listener) {
         
-        Vector<Tile> rv = new Vector<Tile>();
+        int collisions = 0;
 
         for(Tile tile : tiles) {
             for(Tile other : others.getTiles()) {
                 if(tile != other && tile.contains(other)) {
-                    rv.add(other);
+                    listener.onCollision(tile, other);
+                    collisions++;
                 }
             }
         }
 
-        return rv;
+        return collisions;
     }
 }
 
@@ -769,7 +780,7 @@ class Sprite extends Tile implements Tickable {
         angular_acceleration = new Vector3();
     }
 
-    // FIXME proper math funcions in Vector3
+    // FIXME factor proper math funcions in Vector3
     public void tick() {
         velocity.x = velocity.x + acceleration.x;
         velocity.y = velocity.y + acceleration.y;
@@ -827,39 +838,14 @@ class AsteroidCommandWorld extends World {
     public int num_asteroids = 50;
 
     public AsteroidCommandWorld() {
-
         sky = new BackgroundTile(this);
         statics.add(sky);
 
         ground = new GroundTile(this);
         statics.add(ground);
         
-        Random random = new Random();
-        for(int i=0; i<num_asteroids; i++) {
-            AsteroidSprite a = new AsteroidSprite(this);
-
-            a.scale.x = random.nextFloat();
-            a.scale.y = random.nextFloat();
-            a.scale.z = random.nextFloat();
-
-            a.position.x = (random.nextFloat() * 50.0f) - 25f;
-            a.position.y = 0;
-            a.position.z = (random.nextFloat() * 50.0f) - 25f;
-            
-            a.velocity.x = random.nextFloat() * .01f;
-            a.velocity.y = -.08f;
-            a.velocity.z = random.nextFloat() * .01f;
-
-            a.rotation.x = random.nextFloat() * 360.0f;
-            a.rotation.y = random.nextFloat() * 360.0f;
-            a.rotation.z = random.nextFloat() * 360.0f;            
-
-            a.angular_velocity.x = random.nextFloat();
-            a.angular_velocity.y = random.nextFloat();
-            a.angular_velocity.z = random.nextFloat();
-
-            asteroids.add(a);
-        }
+        for(int i=0; i<num_asteroids; i++)
+            spawnAsteroid();
     }
 
     public void draw(GL10 gl) {
@@ -876,54 +862,91 @@ class AsteroidCommandWorld extends World {
         stations.load(gl);
     }
 
+    CollisionListener AsteroidCollisionListener = new CollisionListener() {
+            private static final String TAG = "AsteroidCollisionListener";
+
+            public void onCollision(Tile a, Tile b) {
+                Sprite sa = (Sprite)a;
+                sa.velocity.x *= -1;
+                sa.velocity.y *= -1;
+                sa.velocity.z *= -1;
+                
+                Sprite sb = (Sprite)b;
+                sb.velocity.x *= -1;
+                sb.velocity.y *= -1;
+                sb.velocity.z *= -1;
+            }                
+        };
+
+    CollisionListener ProjectileCollisionListener = new CollisionListener() {
+            private static final String TAG = "ProjectileCollisionListener";
+                
+            public void onCollision(Tile a, Tile b) {               
+                Log.d(TAG, "projectile collision: " + a + ", " + b);
+                
+                Sprite projectile = (Sprite)a;                
+                Sprite asteroid = (Sprite)b;
+            }                
+        };
+    
     public void tick() {
         asteroids.tick();
         projectiles.tick();
         stations.tick();
 
-        Vector<Tile> collisions = asteroids.collide(asteroids);
-        for(Tile t: collisions) {
-            Sprite s = (Sprite)t;
-            s.velocity.x *= -1;
-            s.velocity.y *= -1;
-            s.velocity.z *= -1;
-        }        
+        asteroids.collide(asteroids, AsteroidCollisionListener);        
+        projectiles.collide(asteroids, ProjectileCollisionListener);
 
-        for(Tile t: asteroids.getTiles()) {
-            if(ground.contains(t)) {
+        int removed = rangeFilter(asteroids, 100f);
 
-                Log.d(TAG, "ground bounce");
+        for(int i=0; i<removed; i++)
+            spawnAsteroid();
 
-                Sprite s = (Sprite)t;
-                s.velocity.x *= -1;
-                s.velocity.y *= -1;
-                s.velocity.z *= -1;                
-            }
-        }
+        rangeFilter(projectiles, 100f);
+    }
 
+    protected int rangeFilter(TileGroup group, float range) {
+        int removed = 0;
 
-        for(Tile t: asteroids.getTiles()) {
-            if(sky.contains(t)) {
-                Log.d(TAG, "sky bounce");
-
-                Sprite s = (Sprite)t;
-                s.velocity.x *= -1;
-                s.velocity.y *= -1;
-                s.velocity.z *= -1;                
-            }
-        }
-
-        Vector<Tile> tiles = projectiles.getTiles();    
+        Vector<Tile> tiles = group.getTiles();    
         Iterator<Tile> iter = tiles.iterator();
 
         while(iter.hasNext()) {
-            Tile t = iter.next();
+             Tile t = iter.next();
 
-            if(t.position.magnitude() > 50f) {
-                Log.d(TAG, "rocket out");
+            if(t.position.magnitude() > 100f) {
                 iter.remove();
+                removed++;
             }
-        }
+        }        
+        
+        return removed;
+    }
+
+    protected void spawnAsteroid() {
+        AsteroidSprite a = new AsteroidSprite(this);
+
+        a.scale.x = RandomGenerator.randomRange(.5f, 1.5f);
+        a.scale.y = RandomGenerator.randomRange(.5f, 1.5f);
+        a.scale.z = RandomGenerator.randomRange(.5f, 1.5f);
+
+        a.position.x = RandomGenerator.randomRange(-25f, 25f);
+        a.position.y = -25f + RandomGenerator.randomRange(-5f, 5f);
+        a.position.z = -25f + RandomGenerator.randomRange(-5f, 5f);
+            
+        a.velocity.x = RandomGenerator.randomRange(-.05f, .05f);
+        a.velocity.y = RandomGenerator.randomRange(.05f, .1f);
+        a.velocity.z = RandomGenerator.randomRange(-.05f, -.1f);
+
+        a.rotation.x = RandomGenerator.randomRange(0, 360f);
+        a.rotation.y = RandomGenerator.randomRange(0, 360f);
+        a.rotation.z = RandomGenerator.randomRange(0, 360f);
+
+        a.angular_velocity.x = RandomGenerator.randomRange(0, 2f);
+        a.angular_velocity.y = RandomGenerator.randomRange(0, 2f);
+        a.angular_velocity.z = RandomGenerator.randomRange(0, 2f);
+
+        asteroids.add(a);
     }
 
     public void fireAt(Vector3 p) {
@@ -953,6 +976,8 @@ class RocketSprite extends Sprite {
 
     public RocketSprite(World world, Vector3 target) {
         super(world);
+
+        position = new Vector3(0f, -10f, 0f);
         
         velocity = new Vector3(target);
         velocity.normalize();
@@ -971,7 +996,7 @@ class BackgroundTile extends Tile {
 
     public BackgroundTile(World world) {
         super(world);
-        scale = new Vector3(50f, 50f, 50f);
+        scale = new Vector3(250f, 250f, 250f);
     }
 
     protected Model getModel() {
