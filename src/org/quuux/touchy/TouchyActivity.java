@@ -26,6 +26,7 @@ import javax.microedition.khronos.opengles.GL;
 import javax.microedition.khronos.opengles.GL10;
 
 import java.util.Iterator;
+import java.util.ListIterator;
 import java.util.Arrays;
 import java.util.Vector;
 import java.util.Map;
@@ -254,7 +255,11 @@ class RandomGenerator {
    
     public static float randomRange(float min, float max) {
         return min + ((max-min) * random.nextFloat());
-    }        
+    }
+
+    public static int randomInt(int min, int max) {
+        return min + random.nextInt(max-min);
+    }
 }
 
 class Camera {
@@ -584,40 +589,6 @@ interface Tickable {
     void tick();
 }
 
-class Vector2 {
-    public float x, y;
-
-    public Vector2() {}
-    
-    public Vector2(float x, float y) {
-        this.x = x;
-        this.y = y;
-    }
-
-    public Vector2(Vector2 v) {
-        x = v.x;
-        y = v.y; 
-    }
-
-    public float magnitude() {
-        return (float)Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2));
-    }
-
-    public void normalize() { 
-        float mag = magnitude();
-        x /= mag;
-        y /= mag;
-    }
-
-    public void scale(float factor) {
-        x *= factor;
-        y *= factor;
-    }
-
-    public String toString() {
-        return "Vector2(" + this.x + ", " + this.y + ")";
-    }
-}
 
 class Vector3 {
     public float x,y,z;
@@ -656,6 +627,66 @@ class Vector3 {
     public String toString() {
         return "Vector3(" + this.x + ", " + this.y + ", " + this.z + ")";
     }
+
+    public float dot(Vector3 v) {
+        return x*v.x + y*v.y + z*v.z;
+    }
+
+    public void add(float x, float y, float z) {
+        this.x += x;
+        this.y += y;
+        this.z += z;
+    }
+
+    public void add(Vector3 o) {
+        add(o.x, o.y, o.z);
+    }
+
+    public void subtract(float x, float y, float z) {
+        this.x -= x;
+        this.y -= y;
+        this.z -= z;
+    }
+
+    public void subtract(Vector3 o) {
+        subtract(o.x, o.y, o.z);
+    }
+
+}
+
+class Vector2 extends Vector3 {
+    public Vector2() {}
+    
+    public Vector2(float x, float y) {
+        super(x, y, 0);
+    }
+
+    public Vector2(Vector2 v) {
+        super(v);
+        z = 0;
+    }
+
+    public String toString() {
+        return "Vector2(" + this.x + ", " + this.y + ")";
+    }
+
+
+    public void add(float x, float y) {
+        add(x, y, 0);
+    }
+
+    public void add(Vector2 o) {
+        add(o.x, o.y);
+    }
+
+    public void subtract(float x, float y) {
+        subtract(x, y, 0);
+    }
+
+    public void subtract(Vector2 o) {
+        subtract(o.x, o.y, 0);
+    }
+
 }
 
 abstract class Tile implements Drawable {
@@ -684,6 +715,22 @@ abstract class Tile implements Drawable {
         return null;
     }
 
+    protected Vector3 getPosition() {
+        return position;
+    }
+
+    protected Vector3 getRotation() {
+        return rotation;
+    }
+
+    protected Vector3 getScale() {
+        return scale;
+    }
+
+    protected Vector3 getBounds() {
+        return bounds;
+    }
+
     public void load(GL10 gl) {
         model.loadTexture(gl);
     }
@@ -707,7 +754,6 @@ abstract class Tile implements Drawable {
     //   min edge of B < max edge of A
     //   max edge of B > min edge of A
 
-    // FIXME z with ortho flag
     public boolean contains(Tile o) {
         return (this.position.x-bounds.x) < (o.position.x+o.bounds.x) &&
                (this.position.x+bounds.x) > (o.position.x-o.bounds.x) &&
@@ -718,6 +764,8 @@ abstract class Tile implements Drawable {
     }
 }
 
+
+
 abstract class CollisionListener {
     abstract public void onCollision(Tile a, Tile b);
 }
@@ -725,7 +773,11 @@ abstract class CollisionListener {
 class TileGroup implements Drawable {
     private static final String TAG = "TileGroup";
 
-    protected Vector<Tile> tiles = new Vector<Tile>();
+    protected Vector<Tile> tiles   = new Vector<Tile>();
+    
+    public int size() {
+        return tiles.size();
+    }
     
     public boolean add(Tile tile) {
         return tiles.add(tile);
@@ -746,7 +798,7 @@ class TileGroup implements Drawable {
     }
 
     public int collide(TileGroup others, CollisionListener listener) {
-        
+
         int collisions = 0;
 
         for(Tile tile : tiles) {
@@ -771,8 +823,13 @@ class Sprite extends Tile implements Tickable {
     protected Vector3 angular_velocity;
     protected Vector3 angular_acceleration;
 
+    protected int age;
+    protected boolean alive;
+
     public Sprite(World world) {
         super(world);
+
+        alive = true;
 
         velocity = new Vector3();
         acceleration = new Vector3();
@@ -780,25 +837,38 @@ class Sprite extends Tile implements Tickable {
         angular_acceleration = new Vector3();
     }
 
-    // FIXME factor proper math funcions in Vector3
+    public boolean isAlive() {
+        return alive;
+    }
+
+    public void die() {
+        alive = false;
+    }
+
+    protected Vector3 getVelocity() {
+        return velocity;
+    }
+
+    protected Vector3 getAcceleration() {
+        return acceleration;
+    }
+
+    protected Vector3 getAngularVelocity() {
+        return angular_velocity;
+    }
+
+    protected Vector3 getAngularAcceleration() {
+        return angular_acceleration;
+    }
+
     public void tick() {
-        velocity.x = velocity.x + acceleration.x;
-        velocity.y = velocity.y + acceleration.y;
-        velocity.z = velocity.z + acceleration.z;
+        age++;
 
-        position.x = position.x + velocity.x;
-        position.y = position.y + velocity.y;
-        position.z = position.z + velocity.z;
+        position.add(velocity);
+        velocity.add(acceleration);
 
-        angular_velocity.x = angular_velocity.x + angular_acceleration.x;
-        angular_velocity.y = angular_velocity.y + angular_acceleration.y;
-        angular_velocity.z = angular_velocity.z + angular_acceleration.z;
-
-        rotation.x = rotation.x + angular_velocity.x;
-        rotation.y = rotation.y + angular_velocity.y;
-        rotation.z = rotation.z + angular_velocity.z;
-
-        //Log.d(TAG, toString());
+        rotation.add(angular_velocity);
+        angular_velocity.add(angular_acceleration);
     }
 
     public String toString() {
@@ -810,10 +880,37 @@ class Sprite extends Tile implements Tickable {
 class SpriteGroup extends TileGroup implements Tickable {
     private static final String TAG = "SpriteGroup";
 
+    protected Vector<Sprite> spawned = new Vector<Sprite>();
+
+    protected void spawn(Sprite s) {
+        spawned.add(s);
+    }
+
     public void tick() {
-        for(Tile t : tiles) {
+        for(Sprite s: spawned)
+            tiles.add(s);
+
+        spawned.clear();
+
+        for(Tile t : tiles)
             ((Sprite)t).tick();
-        }
+    }
+
+    protected int reap() {
+        int removed = 0;
+     
+        Iterator<Tile> iter = tiles.iterator();
+
+        while(iter.hasNext()) {
+            Sprite t = (Sprite)iter.next();
+            
+            if(!t.isAlive()) {
+                iter.remove();
+                removed++;
+            }
+        }        
+        
+        return removed;
     }
 }
 
@@ -867,26 +964,58 @@ class AsteroidCommandWorld extends World {
 
             public void onCollision(Tile a, Tile b) {
                 Sprite sa = (Sprite)a;
-                sa.velocity.x *= -1;
-                sa.velocity.y *= -1;
-                sa.velocity.z *= -1;
-                
+                sa.velocity.scale(-1f);
+
                 Sprite sb = (Sprite)b;
-                sb.velocity.x *= -1;
-                sb.velocity.y *= -1;
-                sb.velocity.z *= -1;
+                sb.velocity.scale(-1f);
             }                
         };
 
     CollisionListener ProjectileCollisionListener = new CollisionListener() {
             private static final String TAG = "ProjectileCollisionListener";
-                
-            public void onCollision(Tile a, Tile b) {               
+
+            public void onCollision(Tile a, Tile b) {
                 Log.d(TAG, "projectile collision: " + a + ", " + b);
-                
-                Sprite projectile = (Sprite)a;                
+                               
+                Sprite projectile = (Sprite)a;
                 Sprite asteroid = (Sprite)b;
-            }                
+                               
+                int num_fragments = RandomGenerator.randomInt(2, 4);
+                for(int i=0; i<num_fragments; i++) {
+
+                    AsteroidSprite fragment = new AsteroidSprite(AsteroidCommandWorld.this);
+
+                    fragment.scale.x = asteroid.scale.x / num_fragments;
+                    fragment.scale.y = asteroid.scale.y / num_fragments;
+                    fragment.scale.z = asteroid.scale.z / num_fragments;
+        
+                    fragment.position.x = asteroid.position.x;
+                    fragment.position.y = asteroid.position.y;
+                    fragment.position.z = asteroid.position.z;
+
+                    fragment.velocity.x = asteroid.velocity.x + 
+                        RandomGenerator.randomRange(-.25f, .25f);
+
+                    fragment.velocity.y = asteroid.velocity.y + 
+                        RandomGenerator.randomRange(-.25f, .25f);
+
+                    fragment.velocity.z = asteroid.velocity.z + 
+                        RandomGenerator.randomRange(-.25f, .25f);
+        
+                    fragment.rotation.x = RandomGenerator.randomRange(0, 360f);
+                    fragment.rotation.y = RandomGenerator.randomRange(0, 360f);
+                    fragment.rotation.z = RandomGenerator.randomRange(0, 360f);
+        
+                    fragment.angular_velocity.x = RandomGenerator.randomRange(0, 2f);
+                    fragment.angular_velocity.y = RandomGenerator.randomRange(0, 2f);
+                    fragment.angular_velocity.z = RandomGenerator.randomRange(0, 2f);
+                    
+                    asteroids.spawn(fragment);
+                }
+
+                projectile.die();
+                asteroid.die();
+            }
         };
     
     public void tick() {
@@ -897,12 +1026,15 @@ class AsteroidCommandWorld extends World {
         asteroids.collide(asteroids, AsteroidCollisionListener);        
         projectiles.collide(asteroids, ProjectileCollisionListener);
 
-        int removed = rangeFilter(asteroids, 100f);
+        rangeFilter(asteroids, 200f);
+        rangeFilter(projectiles, 200f);
 
-        for(int i=0; i<removed; i++)
+        asteroids.reap();
+        projectiles.reap();
+        stations.reap();
+
+        while(asteroids.size() < num_asteroids)
             spawnAsteroid();
-
-        rangeFilter(projectiles, 100f);
     }
 
     protected int rangeFilter(TileGroup group, float range) {
@@ -912,14 +1044,12 @@ class AsteroidCommandWorld extends World {
         Iterator<Tile> iter = tiles.iterator();
 
         while(iter.hasNext()) {
-             Tile t = iter.next();
+            Sprite t = (Sprite)iter.next();
+            
+            if(t.position.magnitude() > range)
+                t.die();
+        }
 
-            if(t.position.magnitude() > 100f) {
-                iter.remove();
-                removed++;
-            }
-        }        
-        
         return removed;
     }
 
@@ -934,9 +1064,9 @@ class AsteroidCommandWorld extends World {
         a.position.y = -25f + RandomGenerator.randomRange(-5f, 5f);
         a.position.z = -25f + RandomGenerator.randomRange(-5f, 5f);
             
-        a.velocity.x = RandomGenerator.randomRange(-.05f, .05f);
+        a.velocity.x = RandomGenerator.randomRange(-.1f, .1f);
         a.velocity.y = RandomGenerator.randomRange(.05f, .1f);
-        a.velocity.z = RandomGenerator.randomRange(-.05f, -.1f);
+        a.velocity.z = RandomGenerator.randomRange(-.1f, -.3f);
 
         a.rotation.x = RandomGenerator.randomRange(0, 360f);
         a.rotation.y = RandomGenerator.randomRange(0, 360f);
@@ -978,10 +1108,16 @@ class RocketSprite extends Sprite {
         super(world);
 
         position = new Vector3(0f, -10f, 0f);
+
+        target.normalize();
+
+        float rotation_x = -90f;//(float)Math.toDegrees(Math.atan2(target.y, target.z));
+        float rotation_y = (float)Math.toDegrees(Math.atan2(target.x, target.z));
         
+        rotation = new Vector3(rotation_x, rotation_y, 0);
+
         velocity = new Vector3(target);
-        velocity.normalize();
-        velocity.scale(.01f);
+        velocity.scale(.02f);
 
         acceleration = new Vector3(velocity);
     }
@@ -996,18 +1132,11 @@ class BackgroundTile extends Tile {
 
     public BackgroundTile(World world) {
         super(world);
-        scale = new Vector3(250f, 250f, 250f);
+        scale = new Vector3(900f, 900f, 900f);
     }
 
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
-    }
-
-    public boolean contains(Tile o) {
-        double d = Math.sqrt(  Math.pow(o.position.x, 2) + 
-                               Math.pow(o.position.y, 2) + 
-                               Math.pow(o.position.z, 2) );
-        return d >= 50f;
     }
 }
 
