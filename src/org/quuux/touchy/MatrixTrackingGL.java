@@ -939,7 +939,7 @@ class MatrixTrackingGL implements GL, GL10, GL10Ext, GL11, GL11Ext {
     }
 
     public void glPointSizePointerOES(int type, int stride, Buffer pointer) {
-        throw new UnsupportedOperationException();
+        mgl11.glPointSizePointerOES(type, stride, pointer);
     }
 
     public void glTexEnvi(int target, int pname, int param) {

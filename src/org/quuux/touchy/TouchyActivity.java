@@ -424,7 +424,6 @@ class GLHelper
     }
 }
 
-// FIXME going to need to create a model per particle 
 class Model {
     private static final String TAG = "Model";
     
@@ -432,19 +431,21 @@ class Model {
     protected FloatBuffer vertices;
     protected FloatBuffer uvs;
     protected FloatBuffer normals;
-    protected Bitmap bitmap;
-    protected int texture_id;
+    protected String texture;
+    protected int texture_id = -1;
 
     public Color color;
 
     public Model(ArrayList<Vector3> vertices, ArrayList<Vector3> uvs,
-                 ArrayList<Vector3> normals, Bitmap bitmap) {
+                 ArrayList<Vector3> normals, String texture) {
+
+        num_vertices = vertices.size();
 
         this.vertices = loadVertices(vertices);
         this.uvs = loadUVs(uvs);
         this.normals = loadVertices(normals);
 
-        this.bitmap = bitmap;
+        this.texture = texture;
 
         color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -477,25 +478,26 @@ class Model {
     }
 
     public void loadTexture(GL10 gl) {
+        Log.d(TAG, "Loading Texture Bitmap: " + texture);
+        Bitmap bitmap = TextureLoader.get(texture);
         texture_id = GLHelper.loadTexture(gl, bitmap);
     }
 
-    // FIXME move texture binding to texture manager
     public void draw(GL10 gl) {
+        if(texture_id == -1)
+            loadTexture(gl);
+
         gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
         gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
 
         gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertices);
-
         gl.glColor4f(color.r, color.g, color.b, color.a);
-
         gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
         gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, uvs);
+        gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, num_vertices);
 
-        gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, num_vertices / 3);
-      
+        gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY);    
         gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
-        gl.glDisableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
     }
 }
 
@@ -611,7 +613,7 @@ class ObjLoader {
                 }
             }
             
-            rv = new Model(vertices, uvs, normals, TextureLoader.get(key));
+            rv = new Model(vertices, uvs, normals, key);
 
         } catch(IOException e) {
             Log.d(TAG, "error loading model: " + e);
@@ -915,7 +917,7 @@ class SpriteGroup extends TileGroup implements Tickable {
                 iter.remove();
                 removed++;
             }
-        }        
+        }
         
         return removed;
     }
@@ -1033,15 +1035,16 @@ class AsteroidCommandWorld extends World {
         asteroids.collide(asteroids, AsteroidCollisionListener);        
         projectiles.collide(asteroids, ProjectileCollisionListener);
 
-        rangeFilter(asteroids, 200f);
-        rangeFilter(projectiles, 200f);
+        rangeFilter(asteroids, 500f);
+        rangeFilter(projectiles, 500f);
 
         asteroids.reap();
         projectiles.reap();
         stations.reap();
 
-        while(asteroids.size() < num_asteroids)
-            spawnAsteroid();
+        // FIXME infinite loop
+        // while(asteroids.size() < num_asteroids)
+        //     spawnAsteroid();
     }
 
     protected int rangeFilter(TileGroup group, float range) {
@@ -1127,7 +1130,42 @@ class RocketSprite extends Sprite {
         velocity.scale(.02f);
 
         acceleration = new Vector3(velocity);
-    };
+
+        smoke_trail = new ParticleEmitter(50) {
+                private final static String TAG = "SmokeTrail";
+
+                private final static String TEXTURE = "smoke";
+
+                protected Bitmap getTextureBitmap() {
+                    return TextureLoader.get(TEXTURE);
+                }
+                
+                public void spawnParticle(Particle p) {
+                    p.position.copy(position);
+                    p.position.z += 1;
+
+                    p.velocity.copy(velocity);
+                    p.velocity.scale(.8f);
+                    p.velocity.x += RandomGenerator.randomRange(-.1f, .1f);
+                    p.velocity.y += RandomGenerator.randomRange(-.1f, .1f);
+
+                    p.acceleration.copy(acceleration);
+                    p.acceleration.scale(-.8f);
+                    
+                    p.ttl = RandomGenerator.randomInt(60, 180);
+                    p.scale = RandomGenerator.randomRange(1f, 2f);
+                }
+                
+                public void tickParticle(Particle p, long elapsed) {
+                    super.tickParticle(p, elapsed);
+                    
+                    float percentile = (float)p.age/(float)p.ttl;
+                    
+                    //p.color.a = 1f - percentile;
+                    p.size = 32.0f; //p.scale * percentile;
+                }
+            };       
+    }
 
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
@@ -1148,39 +1186,14 @@ class RocketSprite extends Sprite {
         smoke_trail.tick(elapsed);
     }
 
-    protected ParticleEmitter smoke_trail = new ParticleEmitter(50) {
-
-            private final static String TEXTURE = "smoke";
-
-            protected Bitmap getTextureBitmap() {
-                return TextureLoader.get(TEXTURE);
-            }
-        
-            public void spawnParticle(Particle p) {
-                p.position.copy(position);
-                p.velocity.copy(velocity);
-                p.acceleration.copy(acceleration);
-
-                p.ttl = RandomGenerator.randomInt(60, 180);
-                p.scale = RandomGenerator.randomRange(1f, 2f);
-            }
-
-            public void tickParticle(Particle p, long elapsed) {
-                super.tickParticle(p, elapsed);
-                    
-                float percentile = (float)p.age/(float)p.ttl;
-                
-                p.color.a = 1f - percentile;
-                p.size = p.scale * percentile;
-            }
-        };
+    protected ParticleEmitter smoke_trail;
 }
 
 class Particle {
-    public Vector3 position;
-    public Vector3 velocity;
-    public Vector3 acceleration;
-    public Color color;
+    public Vector3 position = new Vector3();
+    public Vector3 velocity = new Vector3();
+    public Vector3 acceleration = new Vector3();
+    public Color color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     public float size;
     public float scale;
     public int ttl;
@@ -1189,12 +1202,14 @@ class Particle {
 
 abstract class ParticleEmitter implements Drawable, Tickable {
 
+    private static final String TAG ="ParticleEmitter";
+
     protected Particle[] particles;
 
     protected FloatBuffer vertices;
     protected FloatBuffer sizes;
 
-    protected int texture_id;
+    protected int texture_id = -1 ;
 
     public ParticleEmitter(int num_particles) {
 
@@ -1205,7 +1220,7 @@ abstract class ParticleEmitter implements Drawable, Tickable {
 
         for(int i=0; i<particles.length; i++) {
             particles[i] = new Particle();
-            spawnParticle(particles[i]);
+            particles[i].ttl = -1;
         }
     }
 
@@ -1223,6 +1238,7 @@ abstract class ParticleEmitter implements Drawable, Tickable {
         sizes.clear();
 
         for(int i=0; i<particles.length; i++) {
+
             if(particles[i].age > particles[i].ttl)
                 spawnParticle(particles[i]);
 
@@ -1231,6 +1247,7 @@ abstract class ParticleEmitter implements Drawable, Tickable {
             vertices.put(particles[i].position.x);
             vertices.put(particles[i].position.y);
             vertices.put(particles[i].position.z);
+            sizes.put(particles[i].size);
         }
 
         vertices.position(0);
@@ -1243,6 +1260,10 @@ abstract class ParticleEmitter implements Drawable, Tickable {
     }
 
     public void draw(GL10 gl) {
+
+        if(texture_id == -1) 
+            load(gl);
+
         gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_BUFFER_BINDING_OES);
         gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
         gl.glEnableClientState(GL11.GL_POINT_SPRITE_OES);
