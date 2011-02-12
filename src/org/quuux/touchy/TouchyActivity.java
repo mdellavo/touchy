@@ -24,11 +24,12 @@ import java.nio.ByteOrder;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL;
 import javax.microedition.khronos.opengles.GL10;
+import javax.microedition.khronos.opengles.GL11;
 
 import java.util.Iterator;
 import java.util.ListIterator;
 import java.util.Arrays;
-import java.util.Vector;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Random;
@@ -148,7 +149,9 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     protected Camera camera;
 
     protected int frames;
+    protected int last_frames;
     protected long last;
+    protected long last_fps;
 
     protected int width;
     protected int height;
@@ -227,11 +230,12 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     public void onDrawFrame(GL10 gl) {
 
         long now = System.currentTimeMillis();
+        long elapsed = now - last;
 
         frames++;        
 
-        camera.tick();
-        world.tick();
+        camera.tick(elapsed);
+        world.tick(elapsed);
 
         gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 
@@ -242,11 +246,14 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         // draw sprites
         world.draw(gl);
 
-        if(now-last > 1000) {
-            Log.d(TAG, "FPS: " + frames);
-            last = now;
-            frames = 0;
+        if(now - last_fps > 1000) {
+            int fps = frames - last_frames;
+            Log.d(TAG, "FPS: " + fps);
+            last_frames = frames;
+            last_fps = now;
         }
+
+        last = now;
     }
 }
 
@@ -305,7 +312,7 @@ class Camera {
         gl.glRotatef(rotation.z, 0, 1f, 1f);
     }
 
-    public void tick() {
+    public void tick(long elapsed) {
         //rotation.y += .0001f;
     }
 
@@ -354,6 +361,70 @@ class TextureLoader {
 
 }
 
+class Color {
+    public float r,g,b,a;
+
+    public Color(float r, float g, float b, float a) {
+	this.r = r;
+	this.g = g;
+	this.b = b;
+	this.a = a;
+    }
+
+    public Color(float r, float g, float b) {
+	this(r, g, b, 1.0f);
+    }
+
+    public String toString() {
+	return "Color(" + r + ", " + g + ", " + b + ", " + a + ")";
+    }
+}
+
+class Material {
+    public String name;
+    public Color ambient, diffuse, specular;
+    public float shininess;
+    public int illumination_model;
+    public String texture_map; 
+}
+
+// https://github.com/lithium/android-game
+class GLHelper
+{
+    private static final String TAG = "GLHelper";
+
+    public static FloatBuffer floatBuffer(int size)
+    {
+        ByteBuffer byte_buf = ByteBuffer.allocateDirect(size * 4);
+        byte_buf.order(ByteOrder.nativeOrder());
+        return byte_buf.asFloatBuffer();
+    }
+
+    public static int loadTexture(GL10 gl, Bitmap bitmap) {
+        int[] texture_ids = new int[1];
+        
+        gl.glGenTextures(1, texture_ids, 0);
+
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_ids[0]);
+
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, 
+                           GL10.GL_LINEAR);
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER,
+                           GL10.GL_LINEAR);
+
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
+                           GL10.GL_REPEAT);
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
+                           GL10.GL_REPEAT);
+        
+        GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bitmap, 0);
+        Log.d(TAG, "Loaded Texture ID: " + texture_ids[0]);        
+
+        return texture_ids[0];
+    }
+}
+
+// FIXME going to need to create a model per particle 
 class Model {
     private static final String TAG = "Model";
     
@@ -361,32 +432,25 @@ class Model {
     protected FloatBuffer vertices;
     protected FloatBuffer uvs;
     protected FloatBuffer normals;
-    protected Bitmap texture;
+    protected Bitmap bitmap;
     protected int texture_id;
-    protected float[] color;
 
-    public Model(Vector<Vector3> vertices, Vector<Vector3> uvs,
-                 Vector<Vector3> normals, Bitmap texture) {
+    public Color color;
+
+    public Model(ArrayList<Vector3> vertices, ArrayList<Vector3> uvs,
+                 ArrayList<Vector3> normals, Bitmap bitmap) {
 
         this.vertices = loadVertices(vertices);
         this.uvs = loadUVs(uvs);
         this.normals = loadVertices(normals);
 
-        this.texture = texture;
+        this.bitmap = bitmap;
 
-        color = new float[4];
-        color[0] = 1.0f;
-        color[1] = 1.0f;
-        color[2] = 1.0f;
-        color[3] = 1.0f;
+        color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    protected FloatBuffer loadUVs(Vector<Vector3> vertices) {
-        num_vertices = vertices.size()*2;
-        ByteBuffer byte_buffer = ByteBuffer.allocateDirect(num_vertices*4);
-        byte_buffer.order(ByteOrder.nativeOrder());
-
-        FloatBuffer rv = byte_buffer.asFloatBuffer();
+    protected FloatBuffer loadUVs(ArrayList<Vector3> vertices) {
+        FloatBuffer rv = GLHelper.floatBuffer(vertices.size()*2);
 
         for(Vector3 vertex : vertices) {
             rv.put(vertex.x);
@@ -398,12 +462,8 @@ class Model {
         return rv;
     }
 
-    protected FloatBuffer loadVertices(Vector<Vector3> vertices) {
-        num_vertices = vertices.size()*3;
-        ByteBuffer byte_buffer = ByteBuffer.allocateDirect(num_vertices*4);
-        byte_buffer.order(ByteOrder.nativeOrder());
-
-        FloatBuffer rv = byte_buffer.asFloatBuffer();
+    protected FloatBuffer loadVertices(ArrayList<Vector3> vertices) {
+        FloatBuffer rv = GLHelper.floatBuffer(vertices.size()*3);
 
         for(Vector3 vertex : vertices) {
             rv.put(vertex.x);
@@ -417,34 +477,17 @@ class Model {
     }
 
     public void loadTexture(GL10 gl) {
-        int[] texture_ids = new int[1];
-        
-        gl.glGenTextures(1, texture_ids, 0);
-        texture_id = texture_ids[0];
-
-        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
-
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER,
-                           GL10.GL_LINEAR);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER,
-                           GL10.GL_LINEAR);
-
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
-                           GL10.GL_REPEAT);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
-                           GL10.GL_REPEAT);
-        
-        GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, texture, 0);
-        Log.d(TAG, "Loaded Texture ID: " + texture_id);        
+        texture_id = GLHelper.loadTexture(gl, bitmap);
     }
 
+    // FIXME move texture binding to texture manager
     public void draw(GL10 gl) {
         gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
         gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
 
         gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertices);
 
-        gl.glColor4f(color[0], color[1], color[2], color[3]);
+        gl.glColor4f(color.r, color.g, color.b, color.a);
 
         gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
         gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, uvs);
@@ -504,12 +547,12 @@ class ObjLoader {
                             parts.length>3 ? Float.valueOf(parts[3]) : 0 );
     }
 
-    protected static Vector3[][] parseFace( Vector<Vector3> v, 
-                                            Vector<Vector3> vt, 
-                                            Vector<Vector3> vn, 
+    protected static Vector3[][] parseFace( ArrayList<Vector3> v, 
+                                            ArrayList<Vector3> vt, 
+                                            ArrayList<Vector3> vn, 
                                             String[] parts ) {
 
-        Vector[] tables = {v, vt, vn};
+        ArrayList[] tables = {v, vt, vn};
 
         String p1[] = parts[1].split("/");
         String p2[] = parts[2].split("/");
@@ -532,20 +575,19 @@ class ObjLoader {
         if(in == null)
             return null;
         
-        Vector<Vector3> v = new Vector<Vector3>();
-        Vector<Vector3> vt = new Vector<Vector3>();
-        Vector<Vector3> vn = new Vector<Vector3>();
+        ArrayList<Vector3> v = new ArrayList<Vector3>();
+        ArrayList<Vector3> vt = new ArrayList<Vector3>();
+        ArrayList<Vector3> vn = new ArrayList<Vector3>();
 
-        Vector<Vector3> vertices = new Vector<Vector3>();
-        Vector<Vector3> uvs = new Vector<Vector3>();
-        Vector<Vector3> normals = new Vector<Vector3>();
+        ArrayList<Vector3> vertices = new ArrayList<Vector3>();
+        ArrayList<Vector3> uvs = new ArrayList<Vector3>();
+        ArrayList<Vector3> normals = new ArrayList<Vector3>();
 
         Model rv = null;
 
         try {
             String line;
         
-
             while((line = in.readLine()) != null) {
             
                 String[] parts = line.split("\\s");
@@ -561,7 +603,7 @@ class ObjLoader {
                 else if(parts[0].equals("f")) {
 
                     Vector3[][] face = parseFace(v, vt, vn, parts);
-                    Vector vectors[] = {vertices, uvs, normals};
+                    ArrayList vectors[] = {vertices, uvs, normals};
 
                     for(int i=0; i<vectors.length; i++)
                         for(int j=0; j<face[i].length; j++)
@@ -581,14 +623,13 @@ class ObjLoader {
 }
 
 interface Drawable {
-    void draw(GL10 gl);
-    void load(GL10 gl);
+    public void draw(GL10 gl);
+    public void load(GL10 gl);
 }
 
 interface Tickable {
-    void tick();
+    public void tick(long elapsed);
 }
-
 
 class Vector3 {
     public float x,y,z;
@@ -670,7 +711,6 @@ class Vector2 extends Vector3 {
         return "Vector2(" + this.x + ", " + this.y + ")";
     }
 
-
     public void add(float x, float y) {
         add(x, y, 0);
     }
@@ -686,7 +726,6 @@ class Vector2 extends Vector3 {
     public void subtract(Vector2 o) {
         subtract(o.x, o.y, 0);
     }
-
 }
 
 abstract class Tile implements Drawable {
@@ -695,10 +734,10 @@ abstract class Tile implements Drawable {
     protected World world;
     protected Model model;
 
-    protected Vector3 position;
-    protected Vector3 rotation;
-    protected Vector3 scale;
-    protected Vector3 bounds;
+    public Vector3 position;
+    public Vector3 rotation;
+    public Vector3 scale;
+    public Vector3 bounds;
 
     public Tile(World world) {
         this.world = world;
@@ -713,22 +752,6 @@ abstract class Tile implements Drawable {
 
     protected Model getModel() {
         return null;
-    }
-
-    protected Vector3 getPosition() {
-        return position;
-    }
-
-    protected Vector3 getRotation() {
-        return rotation;
-    }
-
-    protected Vector3 getScale() {
-        return scale;
-    }
-
-    protected Vector3 getBounds() {
-        return bounds;
     }
 
     public void load(GL10 gl) {
@@ -764,8 +787,6 @@ abstract class Tile implements Drawable {
     }
 }
 
-
-
 abstract class CollisionListener {
     abstract public void onCollision(Tile a, Tile b);
 }
@@ -773,7 +794,7 @@ abstract class CollisionListener {
 class TileGroup implements Drawable {
     private static final String TAG = "TileGroup";
 
-    protected Vector<Tile> tiles   = new Vector<Tile>();
+    protected ArrayList<Tile> tiles   = new ArrayList<Tile>();
     
     public int size() {
         return tiles.size();
@@ -793,7 +814,7 @@ class TileGroup implements Drawable {
             t.draw(gl);
     }
 
-    public Vector<Tile> getTiles() {
+    public ArrayList<Tile> getTiles() {
         return tiles;
     }
 
@@ -817,11 +838,11 @@ class TileGroup implements Drawable {
 class Sprite extends Tile implements Tickable {
     private static final String TAG = "Sprite";
 
-    protected Vector3 velocity;
-    protected Vector3 acceleration;
+    public Vector3 velocity;
+    public Vector3 acceleration;
     
-    protected Vector3 angular_velocity;
-    protected Vector3 angular_acceleration;
+    public Vector3 angular_velocity;
+    public Vector3 angular_acceleration;
 
     protected int age;
     protected boolean alive;
@@ -845,23 +866,7 @@ class Sprite extends Tile implements Tickable {
         alive = false;
     }
 
-    protected Vector3 getVelocity() {
-        return velocity;
-    }
-
-    protected Vector3 getAcceleration() {
-        return acceleration;
-    }
-
-    protected Vector3 getAngularVelocity() {
-        return angular_velocity;
-    }
-
-    protected Vector3 getAngularAcceleration() {
-        return angular_acceleration;
-    }
-
-    public void tick() {
+    public void tick(long elapsed) {
         age++;
 
         position.add(velocity);
@@ -880,20 +885,20 @@ class Sprite extends Tile implements Tickable {
 class SpriteGroup extends TileGroup implements Tickable {
     private static final String TAG = "SpriteGroup";
 
-    protected Vector<Sprite> spawned = new Vector<Sprite>();
+    protected ArrayList<Sprite> spawned = new ArrayList<Sprite>();
 
     protected void spawn(Sprite s) {
         spawned.add(s);
     }
 
-    public void tick() {
+    public void tick(long elapsed) {
         for(Sprite s: spawned)
             tiles.add(s);
 
         spawned.clear();
 
         for(Tile t : tiles)
-            ((Sprite)t).tick();
+            ((Sprite)t).tick(elapsed);
     }
 
     protected int reap() {
@@ -917,8 +922,7 @@ class SpriteGroup extends TileGroup implements Tickable {
 abstract class World implements Drawable, Tickable {
     abstract public void draw(GL10 gl);
     abstract public void load(GL10 gl);
-    abstract public void tick();
-
+    abstract public void tick(long elapsed);
 }
 
 class AsteroidCommandWorld extends World {
@@ -981,6 +985,7 @@ class AsteroidCommandWorld extends World {
                 Sprite asteroid = (Sprite)b;
                                
                 int num_fragments = RandomGenerator.randomInt(2, 4);
+
                 for(int i=0; i<num_fragments; i++) {
 
                     AsteroidSprite fragment = new AsteroidSprite(AsteroidCommandWorld.this);
@@ -1018,10 +1023,10 @@ class AsteroidCommandWorld extends World {
             }
         };
     
-    public void tick() {
-        asteroids.tick();
-        projectiles.tick();
-        stations.tick();
+    public void tick(long elapsed) {
+        asteroids.tick(elapsed);
+        projectiles.tick(elapsed);
+        stations.tick(elapsed);
 
         asteroids.collide(asteroids, AsteroidCollisionListener);        
         projectiles.collide(asteroids, ProjectileCollisionListener);
@@ -1040,7 +1045,7 @@ class AsteroidCommandWorld extends World {
     protected int rangeFilter(TileGroup group, float range) {
         int removed = 0;
 
-        Vector<Tile> tiles = group.getTiles();    
+        ArrayList<Tile> tiles = group.getTiles();    
         Iterator<Tile> iter = tiles.iterator();
 
         while(iter.hasNext()) {
@@ -1076,14 +1081,14 @@ class AsteroidCommandWorld extends World {
         a.angular_velocity.y = RandomGenerator.randomRange(0, 2f);
         a.angular_velocity.z = RandomGenerator.randomRange(0, 2f);
 
-        asteroids.add(a);
+        asteroids.spawn(a);
     }
 
     public void fireAt(Vector3 p) {
         Log.d(TAG, "Firing at " + p);
 
         RocketSprite r = new RocketSprite(this, p);
-        projectiles.add(r);
+        projectiles.spawn(r);
     }
 }
 
@@ -1127,6 +1132,116 @@ class RocketSprite extends Sprite {
     }
 }
 
+class Particle {
+    public Vector3 position;
+    public Vector3 velocity;
+    public Vector3 acceleration;
+    public float rotation;
+    public float angular_velocity;
+    public float angular_acceleration;
+    public Color color;
+    public float size;
+    public int ttl;
+    public int age;
+}
+
+abstract class ParticleEmitter {
+
+    abstract public void spawn(Particle p);
+
+    public void tick(Particle p, long elapsed) {
+        p.age++;
+
+        p.velocity.add(p.acceleration);
+        p.position.add(p.velocity);
+
+        p.angular_velocity += p.angular_acceleration;
+        p.rotation += p.angular_velocity;
+    }
+}
+
+class ParticleSystem implements Drawable, Tickable {
+
+    protected ParticleEmitter emitter;
+    protected Particle[] particles;
+
+    protected FloatBuffer vertices;
+    protected FloatBuffer sizes;
+
+    protected int texture_id;
+
+    public ParticleSystem(ParticleEmitter emitter, int num_particles) {
+
+        this.emitter = emitter;
+        particles = new Particle[num_particles];
+
+        vertices = GLHelper.floatBuffer(num_particles*3);
+        sizes = GLHelper.floatBuffer(num_particles);
+
+        for(int i=0; i<particles.length; i++) {
+            particles[i] = new Particle();
+            emitter.spawn(particles[i]);
+        }
+    }
+    
+    public void tick(long elapsed) {
+        this.tick(elapsed);
+
+        vertices.clear();
+        sizes.clear();
+
+        for(int i=0; i<particles.length; i++) {
+            emitter.tick(particles[i], elapsed);
+
+            if(particles[i].age < particles[i].ttl)
+                emitter.spawn(particles[i]);
+
+            vertices.put(particles[i].position.x);
+            vertices.put(particles[i].position.y);
+            vertices.put(particles[i].position.z);
+        }
+
+        vertices.position(0);
+        sizes.position(0);
+    }
+
+    public void load(GL10 gl) {
+        gl.glEnable(GL11.GL_POINT_SPRITE_OES);
+    }
+
+    public void draw(GL10 gl) {
+        gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_BUFFER_BINDING_OES);
+        gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
+        gl.glEnableClientState(GL11.GL_POINT_SPRITE_OES);
+        gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+
+        ((GL11)gl).glPointSizePointerOES(GL10.GL_FLOAT, 0, sizes);
+        gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertices);
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
+        gl.glDrawArrays(GL10.GL_POINTS, 0, particles.length);
+
+        gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
+        gl.glDisableClientState(GL11.GL_POINT_SPRITE_OES);
+        gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
+        gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_BUFFER_BINDING_OES);
+    }
+}
+
+class SmokeTrail extends ParticleEmitter {
+    public void spawn(Particle p) {
+        
+    }
+
+    public void tick(Particle p, long elapsed) {
+        super.tick(p, elapsed);
+
+        float percentile = (float)p.age/(float)p.ttl;
+
+        p.color.a = 1f - percentile;
+        p.size = 2.0f * percentile;
+    }
+}
+
 class BackgroundTile extends Tile {
     private static final String MODEL_KEY = "background";
 
@@ -1163,4 +1278,5 @@ class GroundTile extends Tile {
         return d <= 25f;
     }
 }
+
 
