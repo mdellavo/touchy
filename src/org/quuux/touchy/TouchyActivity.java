@@ -1109,6 +1109,21 @@ class RocketSprite extends Sprite {
 
     private static final String MODEL_KEY = "rocket";
 
+    protected ParticleSyste smoke_trail = new ParticleSystem() {
+            public void spawn(Particle p) {
+
+            }
+
+            public void tick(Particle p, long elapsed) {
+                super.tick(p, elapsed);
+                    
+                float percentile = (float)p.age/(float)p.ttl;
+                
+                p.color.a = 1f - percentile;
+                p.size = 2.0f * percentile;
+            }
+        };
+
     public RocketSprite(World world, Vector3 target) {
         super(world);
 
@@ -1125,10 +1140,26 @@ class RocketSprite extends Sprite {
         velocity.scale(.02f);
 
         acceleration = new Vector3(velocity);
-    }
+    };
 
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
+    }
+
+
+    public void load(GL10 gl) {
+        super.load(gl);
+        smoke_trail.load(gl);
+    }
+
+    public void draw(GL10 gl) {
+        super.draw(gl);
+        smoke_trail.draw(gl);
+    }
+
+    public void tick(long elapsed) {
+        super.tick(elapsed);
+        smoke_trail.tick(elapsed);
     }
 }
 
@@ -1224,21 +1255,6 @@ class ParticleSystem implements Drawable, Tickable {
         gl.glDisableClientState(GL11.GL_POINT_SPRITE_OES);
         gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
         gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_BUFFER_BINDING_OES);
-    }
-}
-
-class SmokeTrail extends ParticleEmitter {
-    public void spawn(Particle p) {
-        
-    }
-
-    public void tick(Particle p, long elapsed) {
-        super.tick(p, elapsed);
-
-        float percentile = (float)p.age/(float)p.ttl;
-
-        p.color.a = 1f - percentile;
-        p.size = 2.0f * percentile;
     }
 }
 
