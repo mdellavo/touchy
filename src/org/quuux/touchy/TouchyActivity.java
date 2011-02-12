@@ -611,8 +611,7 @@ class ObjLoader {
                 }
             }
             
-            Bitmap texture = TextureLoader.get(key);
-            rv = new Model(vertices, uvs, normals, texture);
+            rv = new Model(vertices, uvs, normals, TextureLoader.get(key));
 
         } catch(IOException e) {
             Log.d(TAG, "error loading model: " + e);
@@ -641,8 +640,12 @@ class Vector3 {
         this.y = y;
         this.z = z;
     }
-
+    
     public Vector3(Vector3 v) {
+        copy(v);
+    }
+
+    public void copy(Vector3 v) {
         x = v.x;
         y = v.y; 
         z = v.z;
@@ -692,7 +695,6 @@ class Vector3 {
     public void subtract(Vector3 o) {
         subtract(o.x, o.y, o.z);
     }
-
 }
 
 class Vector2 extends Vector3 {
@@ -1125,44 +1127,68 @@ class RocketSprite extends Sprite {
         velocity.scale(.02f);
 
         acceleration = new Vector3(velocity);
-    }
+    };
 
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
     }
+
+    public void load(GL10 gl) {
+        super.load(gl);
+        smoke_trail.load(gl);
+    }
+
+    public void draw(GL10 gl) {
+        super.draw(gl);
+        smoke_trail.draw(gl);
+    }
+
+    public void tick(long elapsed) {
+        super.tick(elapsed);
+        smoke_trail.tick(elapsed);
+    }
+
+    protected ParticleEmitter smoke_trail = new ParticleEmitter(50) {
+
+            private final static String TEXTURE = "smoke";
+
+            protected Bitmap getTextureBitmap() {
+                return TextureLoader.get(TEXTURE);
+            }
+        
+            public void spawnParticle(Particle p) {
+                p.position.copy(position);
+                p.velocity.copy(velocity);
+                p.acceleration.copy(acceleration);
+
+                p.ttl = RandomGenerator.randomInt(60, 180);
+                p.scale = RandomGenerator.randomRange(1f, 2f);
+            }
+
+            public void tickParticle(Particle p, long elapsed) {
+                super.tickParticle(p, elapsed);
+                    
+                float percentile = (float)p.age/(float)p.ttl;
+                
+                p.color.a = 1f - percentile;
+                p.size = p.scale * percentile;
+            }
+        };
 }
 
 class Particle {
     public Vector3 position;
     public Vector3 velocity;
     public Vector3 acceleration;
-    public float rotation;
-    public float angular_velocity;
-    public float angular_acceleration;
     public Color color;
     public float size;
+    public float scale;
     public int ttl;
     public int age;
 }
 
-abstract class ParticleEmitter {
+abstract class ParticleEmitter implements Drawable, Tickable {
 
-    abstract public void spawn(Particle p);
-
-    public void tick(Particle p, long elapsed) {
-        p.age++;
-
-        p.velocity.add(p.acceleration);
-        p.position.add(p.velocity);
-
-        p.angular_velocity += p.angular_acceleration;
-        p.rotation += p.angular_velocity;
-    }
-}
-
-class ParticleSystem implements Drawable, Tickable {
-
-    protected ParticleEmitter emitter;
     protected Particle[] particles;
 
     protected FloatBuffer vertices;
@@ -1170,9 +1196,8 @@ class ParticleSystem implements Drawable, Tickable {
 
     protected int texture_id;
 
-    public ParticleSystem(ParticleEmitter emitter, int num_particles) {
+    public ParticleEmitter(int num_particles) {
 
-        this.emitter = emitter;
         particles = new Particle[num_particles];
 
         vertices = GLHelper.floatBuffer(num_particles*3);
@@ -1180,21 +1205,28 @@ class ParticleSystem implements Drawable, Tickable {
 
         for(int i=0; i<particles.length; i++) {
             particles[i] = new Particle();
-            emitter.spawn(particles[i]);
+            spawnParticle(particles[i]);
         }
     }
-    
-    public void tick(long elapsed) {
-        this.tick(elapsed);
 
+    abstract protected Bitmap getTextureBitmap();
+    abstract public void spawnParticle(Particle p);
+    
+    protected void tickParticle(Particle p, long elapsed) {
+        p.age++;
+        p.velocity.add(p.acceleration);
+        p.position.add(p.velocity);
+    }
+
+    public void tick(long elapsed) {
         vertices.clear();
         sizes.clear();
 
         for(int i=0; i<particles.length; i++) {
-            emitter.tick(particles[i], elapsed);
+            if(particles[i].age > particles[i].ttl)
+                spawnParticle(particles[i]);
 
-            if(particles[i].age < particles[i].ttl)
-                emitter.spawn(particles[i]);
+            tickParticle(particles[i], elapsed);
 
             vertices.put(particles[i].position.x);
             vertices.put(particles[i].position.y);
@@ -1207,6 +1239,7 @@ class ParticleSystem implements Drawable, Tickable {
 
     public void load(GL10 gl) {
         gl.glEnable(GL11.GL_POINT_SPRITE_OES);
+        texture_id = GLHelper.loadTexture(gl, getTextureBitmap());
     }
 
     public void draw(GL10 gl) {
@@ -1224,21 +1257,6 @@ class ParticleSystem implements Drawable, Tickable {
         gl.glDisableClientState(GL11.GL_POINT_SPRITE_OES);
         gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
         gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_BUFFER_BINDING_OES);
-    }
-}
-
-class SmokeTrail extends ParticleEmitter {
-    public void spawn(Particle p) {
-        
-    }
-
-    public void tick(Particle p, long elapsed) {
-        super.tick(p, elapsed);
-
-        float percentile = (float)p.age/(float)p.ttl;
-
-        p.color.a = 1f - percentile;
-        p.size = 2.0f * percentile;
     }
 }
 
