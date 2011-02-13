@@ -212,7 +212,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         gl.glEnable(GL10.GL_TEXTURE_2D);
         gl.glEnable(GL10.GL_BLEND);
         gl.glEnable(GL10.GL_DEPTH_TEST);
-        gl.glBlendFunc(GL10.GL_ONE, GL10.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE);
         gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, 
                      /*GL10.GL_REPLACE*/ GL10.GL_MODULATE);
    }
@@ -1131,7 +1131,7 @@ class RocketSprite extends Sprite {
 
         acceleration = new Vector3(velocity);
 
-        smoke_trail = new ParticleEmitter(50) {
+        smoke_trail = new ParticleEmitter(100) {
                 private final static String TAG = "SmokeTrail";
 
                 private final static String TEXTURE = "smoke";
@@ -1146,14 +1146,14 @@ class RocketSprite extends Sprite {
 
                     p.velocity.copy(velocity);
                     p.velocity.scale(.8f);
-                    p.velocity.x += RandomGenerator.randomRange(-.1f, .1f);
-                    p.velocity.y += RandomGenerator.randomRange(-.1f, .1f);
+                    p.velocity.x += RandomGenerator.randomRange(-.01f, .01f);
+                    p.velocity.y += RandomGenerator.randomRange(-.01f, .01f);
 
                     p.acceleration.copy(acceleration);
                     p.acceleration.scale(-.8f);
                     
-                    p.ttl = RandomGenerator.randomInt(60, 180);
-                    p.scale = RandomGenerator.randomRange(1f, 2f);
+                    p.ttl = RandomGenerator.randomInt(1, 90);
+                    p.scale = RandomGenerator.randomRange(32f, 128f);
                 }
                 
                 public void tickParticle(Particle p, long elapsed) {
@@ -1161,8 +1161,8 @@ class RocketSprite extends Sprite {
                     
                     float percentile = (float)p.age/(float)p.ttl;
                     
-                    //p.color.a = 1f - percentile;
-                    p.size = 32.0f; //p.scale * percentile;
+                    p.color.a = 1f - percentile/2f;
+                    p.size = p.scale * percentile;
                 }
             };       
     }
@@ -1208,6 +1208,7 @@ abstract class ParticleEmitter implements Drawable, Tickable {
 
     protected FloatBuffer vertices;
     protected FloatBuffer sizes;
+    protected FloatBuffer colors;
 
     protected int texture_id = -1 ;
 
@@ -1215,8 +1216,9 @@ abstract class ParticleEmitter implements Drawable, Tickable {
 
         particles = new Particle[num_particles];
 
-        vertices = GLHelper.floatBuffer(num_particles*3);
+        vertices = GLHelper.floatBuffer(num_particles * 3);
         sizes = GLHelper.floatBuffer(num_particles);
+        colors = GLHelper.floatBuffer(num_particles * 4);
 
         for(int i=0; i<particles.length; i++) {
             particles[i] = new Particle();
@@ -1235,6 +1237,7 @@ abstract class ParticleEmitter implements Drawable, Tickable {
 
     public void tick(long elapsed) {
         vertices.clear();
+        colors.clear();
         sizes.clear();
 
         for(int i=0; i<particles.length; i++) {
@@ -1247,16 +1250,25 @@ abstract class ParticleEmitter implements Drawable, Tickable {
             vertices.put(particles[i].position.x);
             vertices.put(particles[i].position.y);
             vertices.put(particles[i].position.z);
+
+            colors.put(particles[i].color.r);
+            colors.put(particles[i].color.g);
+            colors.put(particles[i].color.b);
+            colors.put(particles[i].color.a);
+
             sizes.put(particles[i].size);
         }
 
         vertices.position(0);
+        colors.position(0);
         sizes.position(0);
     }
 
     public void load(GL10 gl) {
         gl.glEnable(GL11.GL_POINT_SPRITE_OES);
         texture_id = GLHelper.loadTexture(gl, getTextureBitmap());
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
+        gl.glTexEnvf(GL11.GL_POINT_SPRITE_OES, GL11.GL_COORD_REPLACE_OES, GL11.GL_TRUE);
     }
 
     public void draw(GL10 gl) {
@@ -1268,12 +1280,15 @@ abstract class ParticleEmitter implements Drawable, Tickable {
         gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
         gl.glEnableClientState(GL11.GL_POINT_SPRITE_OES);
         gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
+        gl.glEnableClientState(GL10.GL_COLOR_ARRAY);
 
+        gl.glColorPointer(4, GL10.GL_FLOAT, 0, colors);
         ((GL11)gl).glPointSizePointerOES(GL10.GL_FLOAT, 0, sizes);
         gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertices);
         gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
         gl.glDrawArrays(GL10.GL_POINTS, 0, particles.length);
 
+        gl.glDisableClientState(GL10.GL_COLOR_ARRAY);
         gl.glDisableClientState(GL10.GL_VERTEX_ARRAY);
         gl.glDisableClientState(GL11.GL_POINT_SPRITE_OES);
         gl.glDisableClientState(GL11.GL_POINT_SIZE_ARRAY_OES);
