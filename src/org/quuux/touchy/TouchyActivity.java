@@ -131,10 +131,7 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
     protected World world;
     protected Camera camera;
 
-    protected int frames;
-    protected int last_frames;
     protected long last;
-    protected long last_fps;
 
     protected int width;
     protected int height;
@@ -193,11 +190,12 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_LINEAR);
 
         gl.glEnable(GL10.GL_TEXTURE_2D);
+        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE);
+
         gl.glEnable(GL10.GL_BLEND);
         gl.glEnable(GL10.GL_DEPTH_TEST);
-        gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE);
-        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, 
-                     /*GL10.GL_REPLACE*/ GL10.GL_MODULATE);
+
+        gl.glBlendFunc(GL10.GL_ONE, GL10.GL_ONE_MINUS_SRC_ALPHA);
    }
 
     public void onSurfaceChanged(GL10 gl, int width, int height) {
@@ -215,8 +213,6 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         long now = System.currentTimeMillis();
         long elapsed = now - last;
 
-        frames++;        
-
         camera.tick(elapsed);
         world.tick(elapsed);
 
@@ -228,13 +224,6 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
         // draw sprites
         world.draw(gl);
-
-        if(now - last_fps > 1000) {
-            int fps = frames - last_frames;
-            Log.d(TAG, "FPS: " + fps);
-            last_frames = frames;
-            last_fps = now;
-        }
 
         last = now;
     }
@@ -248,12 +237,15 @@ class AsteroidCommandWorld extends World {
     public SpriteGroup projectiles = new SpriteGroup();
     public SpriteGroup stations    = new SpriteGroup();
 
+    public FPSSprite fps = new FPSSprite();
+
     public Tile ground;
     public Tile sky;
 
     public int num_asteroids = 50;
 
     public AsteroidCommandWorld() {
+
         sky = new BackgroundTile(this);
         statics.add(sky);
 
@@ -269,6 +261,7 @@ class AsteroidCommandWorld extends World {
         asteroids.draw(gl);
         projectiles.draw(gl);
         stations.draw(gl);
+        fps.draw(gl);
     }
 
     public void load(GL10 gl) {
@@ -276,6 +269,7 @@ class AsteroidCommandWorld extends World {
         asteroids.load(gl);
         projectiles.load(gl);
         stations.load(gl);
+        fps.load(gl);
     }
 
     CollisionListener AsteroidCollisionListener = new CollisionListener() {
@@ -339,6 +333,8 @@ class AsteroidCommandWorld extends World {
         };
     
     public void tick(long elapsed) {
+        fps.tick(elapsed);
+
         asteroids.tick(elapsed);
         projectiles.tick(elapsed);
         stations.tick(elapsed);
@@ -353,9 +349,8 @@ class AsteroidCommandWorld extends World {
         projectiles.reap();
         stations.reap();
 
-        // FIXME infinite loop
-        // while(asteroids.size() < num_asteroids)
-        //     spawnAsteroid();
+        while(asteroids.size() < num_asteroids)
+            spawnAsteroid();
     }
 
     protected int rangeFilter(TileGroup group, float range) {
@@ -408,6 +403,31 @@ class AsteroidCommandWorld extends World {
     }
 }
 
+class FPSSprite extends TextTile implements Tickable {
+    private static final String TAG = "FPSSprite";
+
+    protected long total_elapsed;
+    protected long frames;
+
+    public FPSSprite() {
+        super(128, 32);
+    }
+
+    public void tick(long elapsed) {
+        total_elapsed += elapsed;
+        frames++;
+        
+        if(total_elapsed > 1000) {
+            Log.d(TAG, "fps: " + frames);
+
+            setText("FPS: " + frames);
+            
+            total_elapsed = 0;
+            frames = 0;
+        }
+    }
+}
+
 class AsteroidSprite extends Sprite {
 
     private static final String MODEL_KEY = "asteroid";
@@ -438,7 +458,7 @@ class RocketSprite extends Sprite {
         rotation = new Vector3(rotation_x, rotation_y, 0);
 
         velocity = new Vector3(target);
-        velocity.scale(.02f);
+        velocity.scale(.5f);
 
         acceleration = new Vector3(velocity);
 
@@ -460,9 +480,6 @@ class RocketSprite extends Sprite {
                     p.velocity.x += RandomGenerator.randomRange(-.01f, .01f);
                     p.velocity.y += RandomGenerator.randomRange(-.01f, .01f);
 
-                    p.acceleration.copy(acceleration);
-                    p.acceleration.scale(-.8f);
-                    
                     p.ttl = RandomGenerator.randomInt(1, 90);
                     p.scale = RandomGenerator.randomRange(32f, 128f);
                 }

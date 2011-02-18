@@ -14,6 +14,10 @@ public class SpriteGroup extends TileGroup implements Tickable {
         spawned.add(s);
     }
 
+    public int size() {
+        return tiles.size() + spawned.size();
+    }
+
     public void tick(long elapsed) {
         for(Sprite s: spawned)
             tiles.add(s);

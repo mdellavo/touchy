@@ -15,11 +15,21 @@ public class GLHelper
 {
     private static final String TAG = "GLHelper";
 
-    public static FloatBuffer floatBuffer(int size)
-    {
+    public static FloatBuffer floatBuffer(int size) {
         ByteBuffer byte_buf = ByteBuffer.allocateDirect(size * 4);
         byte_buf.order(ByteOrder.nativeOrder());
         return byte_buf.asFloatBuffer();
+    }
+
+    public static FloatBuffer toFloatBuffer(float[] data) {
+        FloatBuffer rv = floatBuffer(data.length);
+
+        for(int i=0; i<data.length; i++)
+            rv.put(data[i]);
+        
+        rv.position(0);
+
+        return rv;
     }
 
     public static int loadTexture(GL10 gl, Bitmap bitmap) {
