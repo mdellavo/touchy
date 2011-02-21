@@ -56,10 +56,15 @@ public class ObjLoader {
         return rv;
     }
 
-    protected static Vector3 parsePoint(String[] parts) {
+    protected static Vector3 parsePoint3(String[] parts) {
         return new Vector3( Float.valueOf(parts[1]), 
                             Float.valueOf(parts[2]), 
-                            parts.length>3 ? Float.valueOf(parts[3]) : 0 );
+                            Float.valueOf(parts[3]) );
+    }
+
+    protected static Vector2 parsePoint2(String[] parts) {
+        return new Vector2( Float.valueOf(parts[1]), 
+                            Float.valueOf(parts[2]) ); 
     }
 
     protected static Vector3[][] parseFace( ArrayList<Vector3> v, 
@@ -95,7 +100,7 @@ public class ObjLoader {
         ArrayList<Vector3> vn = new ArrayList<Vector3>();
 
         ArrayList<Vector3> vertices = new ArrayList<Vector3>();
-        ArrayList<Vector3> uvs = new ArrayList<Vector3>();
+        ArrayList<Vector2> uvs = new ArrayList<Vector2>();
         ArrayList<Vector3> normals = new ArrayList<Vector3>();
 
         Model rv = null;
@@ -110,11 +115,11 @@ public class ObjLoader {
                 if(parts[0] == "#")
                     continue;
                 else if(parts[0].equals("vt"))
-                    vt.add(parsePoint(parts));
+                    vt.add(parsePoint2(parts));
                 else if(parts[0].equals("vn"))
-                    vn.add(parsePoint(parts));
+                    vn.add(parsePoint3(parts));
                 else if(parts[0].equals("v"))
-                    v.add(parsePoint(parts));
+                    v.add(parsePoint3(parts));
                 else if(parts[0].equals("f")) {
 
                     Vector3[][] face = parseFace(v, vt, vn, parts);
@@ -125,8 +130,17 @@ public class ObjLoader {
                             vectors[i].add(face[i][j]);
                 }
             }
-            
-            rv = new Model(vertices, uvs, normals, key);
+
+            Vector3[] vertex_array = new Vector3[vertices.size()];
+            vertices.toArray(vertex_array);
+
+            Vector2[] uv_array = new Vector2[uvs.size()];
+            uvs.toArray(uv_array);
+
+            Vector3[] normal_array = new Vector3[normals.size()];           
+            normals.toArray(normal_array);
+
+            rv = new Model(vertex_array, uv_array, normal_array, key);
 
         } catch(IOException e) {
             Log.d(TAG, "error loading model: " + e);

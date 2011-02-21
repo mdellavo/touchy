@@ -5,7 +5,6 @@ import javax.microedition.khronos.opengles.GL10;
 public abstract class Tile implements Drawable {
     private static final String TAG = "Tile";
 
-    protected World world;
     protected Model model;
 
     public Vector3 position;
@@ -13,9 +12,7 @@ public abstract class Tile implements Drawable {
     public Vector3 scale;
     public Vector3 bounds;
 
-    public Tile(World world) {
-        this.world = world;
-
+    public Tile() {
         model = getModel();
 
         position = new Vector3();

@@ -3,7 +3,6 @@ package org.quuux.touchy;
 import android.graphics.Bitmap;
 import android.util.Log;
 
-import java.util.ArrayList;
 import java.nio.FloatBuffer;
 import javax.microedition.khronos.opengles.GL10;
 
@@ -19,51 +18,36 @@ public class Model {
 
     public Color color;
 
-    public Model(ArrayList<Vector3> vertices, ArrayList<Vector3> uvs,
-                 ArrayList<Vector3> normals, String texture) {
+    public Model(Vector3[] vertices, Vector2[] uvs, Vector3[] normals, 
+                 String texture) {
 
-        num_vertices = vertices.size();
+        num_vertices = vertices.length;
 
-        this.vertices = loadVertices(vertices);
-        this.uvs = loadUVs(uvs);
-        this.normals = loadVertices(normals);
+        this.vertices = GLHelper.toFloatBuffer(vertices);
+        this.uvs = GLHelper.toFloatBuffer(uvs);
+        this.normals = GLHelper.toFloatBuffer(normals);
 
         this.texture = texture;
 
         color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    protected FloatBuffer loadUVs(ArrayList<Vector3> vertices) {
-        FloatBuffer rv = GLHelper.floatBuffer(vertices.size()*2);
-
-        for(Vector3 vertex : vertices) {
-            rv.put(vertex.x);
-            rv.put(vertex.y);
-        }
-
-        rv.position(0);
-
-        return rv;
-    }
-
-    protected FloatBuffer loadVertices(ArrayList<Vector3> vertices) {
-        FloatBuffer rv = GLHelper.floatBuffer(vertices.size()*3);
-
-        for(Vector3 vertex : vertices) {
-            rv.put(vertex.x);
-            rv.put(vertex.y);
-            rv.put(vertex.z);
-        }
-
-        rv.position(0);
-
-        return rv;
-    }
-
     public void loadTexture(GL10 gl) {
         Log.d(TAG, "Loading Texture Bitmap: " + texture);
         Bitmap bitmap = TextureLoader.get(texture);
         texture_id = GLHelper.loadTexture(gl, bitmap);
+
+        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE);
+
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, 
+                           GL10.GL_LINEAR);
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER,
+                           GL10.GL_LINEAR);
+
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
+                           GL10.GL_REPEAT);
+        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
+                           GL10.GL_REPEAT);
     }
 
     public void draw(GL10 gl) {

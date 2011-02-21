@@ -12,8 +12,8 @@ public class Sprite extends Tile implements Tickable {
     protected int age;
     protected boolean alive;
 
-    public Sprite(World world) {
-        super(world);
+    public Sprite() {
+        super();
 
         alive = true;
 

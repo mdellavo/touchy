@@ -177,12 +177,14 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         Log.d(TAG, "Product: " + Build.PRODUCT);
         Log.d(TAG, "Device: " + Build.DEVICE);
         Log.d(TAG, "Brand: " + Build.BRAND);
-
         Log.d(TAG, "Hardware: " + Build.HARDWARE);
-        Log.d(TAG, "Vendor: " + gl.glGetString(GL10.GL_VENDOR));
-        Log.d(TAG, "Renderer: " + gl.glGetString(GL10.GL_RENDERER));
-        Log.d(TAG, "Version: " + gl.glGetString(GL10.GL_VERSION));
-        Log.d(TAG, "Extensions: " + gl.glGetString(GL10.GL_EXTENSIONS));
+
+        GLHelper.init(gl);
+
+        Log.d(TAG, "Vendor: " + GLHelper.getVendor());
+        Log.d(TAG, "Renderer: " + GLHelper.getRenderer());
+        Log.d(TAG, "Version: " + GLHelper.getVersion());
+        Log.d(TAG, "Extensions: " + GLHelper.getExtensions());
 
         gl.glClearColor(0f,0f,0f, 0.5f);
 
@@ -190,12 +192,13 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_LINEAR);
 
         gl.glEnable(GL10.GL_TEXTURE_2D);
-        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE);
+        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, 
+                     GL10.GL_MODULATE);
 
         gl.glEnable(GL10.GL_BLEND);
         gl.glEnable(GL10.GL_DEPTH_TEST);
 
-        gl.glBlendFunc(GL10.GL_ONE, GL10.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
    }
 
     public void onSurfaceChanged(GL10 gl, int width, int height) {
@@ -212,6 +215,10 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
 
         long now = System.currentTimeMillis();
         long elapsed = now - last;
+
+        //Log.d(TAG, "elapsed: " + elapsed);
+
+        // FIXME add slow frame detection
 
         camera.tick(elapsed);
         world.tick(elapsed);
@@ -246,10 +253,10 @@ class AsteroidCommandWorld extends World {
 
     public AsteroidCommandWorld() {
 
-        sky = new BackgroundTile(this);
+        sky = new BackgroundTile();
         statics.add(sky);
 
-        ground = new GroundTile(this);
+        ground = new GroundTile();
         statics.add(ground);
         
         for(int i=0; i<num_asteroids; i++)
@@ -297,15 +304,17 @@ class AsteroidCommandWorld extends World {
 
                 for(int i=0; i<num_fragments; i++) {
 
-                    AsteroidSprite fragment = new AsteroidSprite(AsteroidCommandWorld.this);
+                    AsteroidSprite fragment = new AsteroidSprite();
 
                     fragment.scale.x = asteroid.scale.x / num_fragments;
                     fragment.scale.y = asteroid.scale.y / num_fragments;
                     fragment.scale.z = asteroid.scale.z / num_fragments;
-        
-                    fragment.position.x = asteroid.position.x;
-                    fragment.position.y = asteroid.position.y;
-                    fragment.position.z = asteroid.position.z;
+
+                    fragment.bounds.x = asteroid.bounds.x / num_fragments;
+                    fragment.bounds.y = asteroid.bounds.y / num_fragments;
+                    fragment.bounds.z = asteroid.bounds.z / num_fragments;
+                    
+                    fragment.position.copy(asteroid.position);
 
                     fragment.velocity.x = asteroid.velocity.x + 
                         RandomGenerator.randomRange(-.25f, .25f);
@@ -370,11 +379,13 @@ class AsteroidCommandWorld extends World {
     }
 
     protected void spawnAsteroid() {
-        AsteroidSprite a = new AsteroidSprite(this);
+        AsteroidSprite a = new AsteroidSprite();
 
-        a.scale.x = RandomGenerator.randomRange(.5f, 1.5f);
-        a.scale.y = RandomGenerator.randomRange(.5f, 1.5f);
-        a.scale.z = RandomGenerator.randomRange(.5f, 1.5f);
+        a.scale.x = RandomGenerator.randomRange(.5f, 3f);
+        a.scale.y = RandomGenerator.randomRange(.5f, 3f);
+        a.scale.z = RandomGenerator.randomRange(.5f, 3f);
+        
+        a.bounds.copy(a.scale);
 
         a.position.x = RandomGenerator.randomRange(-25f, 25f);
         a.position.y = -25f + RandomGenerator.randomRange(-5f, 5f);
@@ -398,7 +409,7 @@ class AsteroidCommandWorld extends World {
     public void fireAt(Vector3 p) {
         Log.d(TAG, "Firing at " + p);
 
-        RocketSprite r = new RocketSprite(this, p);
+        RocketSprite r = new RocketSprite(p);
         projectiles.spawn(r);
     }
 }
@@ -418,8 +429,6 @@ class FPSSprite extends TextTile implements Tickable {
         frames++;
         
         if(total_elapsed > 1000) {
-            Log.d(TAG, "fps: " + frames);
-
             setText("FPS: " + frames);
             
             total_elapsed = 0;
@@ -432,10 +441,6 @@ class AsteroidSprite extends Sprite {
 
     private static final String MODEL_KEY = "asteroid";
 
-    public AsteroidSprite(World world) {
-        super(world);
-    }
-
     protected Model getModel() {
         return ObjLoader.get(MODEL_KEY);
     }
@@ -445,8 +450,8 @@ class RocketSprite extends Sprite {
 
     private static final String MODEL_KEY = "rocket";
 
-    public RocketSprite(World world, Vector3 target) {
-        super(world);
+    public RocketSprite(Vector3 target) {
+        super();
 
         position = new Vector3(0f, -10f, 0f);
 
@@ -521,8 +526,8 @@ class RocketSprite extends Sprite {
 class BackgroundTile extends Tile {
     private static final String MODEL_KEY = "background";
 
-    public BackgroundTile(World world) {
-        super(world);
+    public BackgroundTile() {
+        super();
         scale = new Vector3(900f, 900f, 900f);
     }
 
@@ -535,9 +540,8 @@ class GroundTile extends Tile {
     private static final String TAG = "GroundTile";
     private static final String MODEL_KEY = "ground";
 
-    public GroundTile(World world) {
-        super(world);
-
+    public GroundTile() {
+        super();
         position = new Vector3(0f, -35f, 0f);
         scale    = new Vector3(25f, 25f, 25f);
     }
