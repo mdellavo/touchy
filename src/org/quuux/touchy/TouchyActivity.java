@@ -1,24 +1,32 @@
 package org.quuux.touchy;
 
 import android.app.Activity;
+
 import android.os.Bundle;
+import android.os.Build;
+
 import android.opengl.GLSurfaceView;
 import android.opengl.GLU;
+
 import android.content.Context;
+
 import android.view.MotionEvent;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.GestureDetector;
+import android.view.GestureDetector.OnGestureListener;
+import android.view.GestureDetector.OnDoubleTapListener;
+
 import android.graphics.Bitmap;
+
 import android.util.Log;
 import android.util.DisplayMetrics;
-import android.os.Build;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL;
 import javax.microedition.khronos.opengles.GL10;
 
 import java.util.Iterator;
-
 import java.util.ListIterator;
 import java.util.ArrayList;
 
@@ -70,17 +78,21 @@ public class TouchyActivity extends Activity
     }
 }
 
-class TouchyGLSurfaceView extends GLSurfaceView {
+class TouchyGLSurfaceView extends GLSurfaceView 
+    implements OnDoubleTapListener, OnGestureListener {
 
     protected static final String TAG = "TouchyGLSurfaceView";
 
     protected TouchyRenderer renderer;
+    protected GestureDetector gesture_detector;
 
     public TouchyGLSurfaceView(Context context, TouchyRenderer renderer) {
         super(context);
 
         this.renderer = renderer;
         this.setRenderer(renderer);
+
+        gesture_detector = new GestureDetector(context, this);
     }
 
     public Vector3 projectTouchToWorld(float x, float y) {
@@ -106,20 +118,55 @@ class TouchyGLSurfaceView extends GLSurfaceView {
                            touch_position[2]); 
     }
 
-    public boolean onTouchEvent(final MotionEvent event) {
-        
-        if(event.getAction() == MotionEvent.ACTION_DOWN) {
-            queueEvent(new Runnable() {
-                    public void run() {
-                        Vector3 vec = projectTouchToWorld(event.getX(), 
-                                                          event.getY());
+    public boolean onTouchEvent(final MotionEvent e) {
+        gesture_detector.onTouchEvent(e);
+        return true;
+    }
 
-                        AsteroidCommandWorld world = (AsteroidCommandWorld)renderer.getWorld();
-                        world.fireAt(vec);
-                    }
-                });
-        }
+    public boolean onDown(MotionEvent e) {
+        return false;
+    }
+
+    public boolean onFling(MotionEvent e1, MotionEvent e2, 
+                           float velocityX, float velocityY) {
+        Log.d(TAG, "fling");
+        return true;
+    }
+
+    public void onLongPress(MotionEvent e) {
+        Log.d(TAG, "long press");
+    }
+
+    public boolean onScroll(MotionEvent e1, MotionEvent e2,
+                            float distanceX, float distanceY) {
+        return false;
+    }
+
+    public void onShowPress(MotionEvent e) {        
+    }
+
+    public boolean onSingleTapUp(MotionEvent e) {
+        return false;
+    }
+
+    public boolean onSingleTapConfirmed(final MotionEvent e) {
+
+        queueEvent(new Runnable() {
+                public void run() {
+                    Vector3 vec = projectTouchToWorld(e.getX(), e.getY());
+                    ((AsteroidCommandWorld)renderer.getWorld()).fireAt(vec);
+                }
+            });
         
+        return true;
+    }
+
+    public boolean onDoubleTapEvent(MotionEvent e) {
+        return false;
+    }
+
+    public boolean onDoubleTap(MotionEvent e) {
+        Log.d(TAG, "double tap");
         return true;
     }
 }
@@ -561,4 +608,14 @@ class GroundTile extends Tile {
     }
 }
 
+class SwarmBoid {
+    public Vector3 position = new Vector3();
+    public Vector3 velocity = new Vector3();
+    public Vector3 acceleration = new Vector3();
+    public Color color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+}
 
+class SwarmSprite extends Sprite {
+    private static final String TAG = "GroundTile";
+    private static final String MODEL_KEY = "ground";
+}
