@@ -751,11 +751,11 @@ public class MatrixTrackingGL implements GL, GL10, GL10Ext, GL11, GL11Ext {
     // Unsupported GL11 methods
 
     public void glBindBuffer(int target, int buffer) {
-        throw new UnsupportedOperationException();
+        mgl11.glBindBuffer(target, buffer);
     }
 
     public void glBufferData(int target, int size, Buffer data, int usage) {
-        throw new UnsupportedOperationException();
+        mgl11.glBufferData(target, size, data, usage);
     }
 
     public void glBufferSubData(int target, int offset, int size, Buffer data) {
@@ -775,11 +775,11 @@ public class MatrixTrackingGL implements GL, GL10, GL10Ext, GL11, GL11Ext {
     }
 
     public void glGenBuffers(int n, int[] buffers, int offset) {
-        throw new UnsupportedOperationException();
+        mgl11.glGenBuffers(n, buffers, offset);
     }
 
     public void glGenBuffers(int n, IntBuffer buffers) {
-        throw new UnsupportedOperationException();
+        mgl11.glGenBuffers(n, buffers);
     }
 
     public void glGetBooleanv(int pname, boolean[] params, int offset) {
@@ -987,15 +987,15 @@ public class MatrixTrackingGL implements GL, GL10, GL10Ext, GL11, GL11Ext {
     }
 
     public void glNormalPointer(int type, int stride, int offset) {
-        throw new UnsupportedOperationException();
+        mgl11.glNormalPointer(type, stride, offset);
     }
 
     public void glTexCoordPointer(int size, int type, int stride, int offset) {
-        throw new UnsupportedOperationException();
+        mgl11.glTexCoordPointer(size, type, stride, offset);
     }
 
     public void glVertexPointer(int size, int type, int stride, int offset) {
-        throw new UnsupportedOperationException();
+        mgl11.glVertexPointer(size, type, stride, offset);
     }
 
     public void glCurrentPaletteMatrixOES(int matrixpaletteindex) {

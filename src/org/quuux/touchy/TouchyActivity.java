@@ -249,7 +249,7 @@ class AsteroidCommandWorld extends World {
     public Tile ground;
     public Tile sky;
 
-    public int num_asteroids = 50;
+    public int num_asteroids = 75;
 
     public AsteroidCommandWorld() {
 
@@ -387,13 +387,13 @@ class AsteroidCommandWorld extends World {
         
         a.bounds.copy(a.scale);
 
-        a.position.x = RandomGenerator.randomRange(-25f, 25f);
-        a.position.y = -25f + RandomGenerator.randomRange(-5f, 5f);
-        a.position.z = -25f + RandomGenerator.randomRange(-5f, 5f);
+        a.position.x = RandomGenerator.randomRange(-45f, 45f);
+        a.position.y = -25f + RandomGenerator.randomRange(-10f, 10f);
+        a.position.z = -25f + RandomGenerator.randomRange(-10f, 10f);
             
-        a.velocity.x = RandomGenerator.randomRange(-.1f, .1f);
-        a.velocity.y = RandomGenerator.randomRange(.05f, .1f);
-        a.velocity.z = RandomGenerator.randomRange(-.1f, -.3f);
+        a.velocity.x = RandomGenerator.randomRange(-.2f, .2f);
+        a.velocity.y = RandomGenerator.randomRange(.1f, .2f);
+        a.velocity.z = RandomGenerator.randomRange(-.2f, -.6f);
 
         a.rotation.x = RandomGenerator.randomRange(0, 360f);
         a.rotation.y = RandomGenerator.randomRange(0, 360f);
@@ -481,12 +481,14 @@ class RocketSprite extends Sprite {
                     p.position.z += 1;
 
                     p.velocity.copy(velocity);
-                    p.velocity.scale(.8f);
-                    p.velocity.x += RandomGenerator.randomRange(-.01f, .01f);
-                    p.velocity.y += RandomGenerator.randomRange(-.01f, .01f);
+                    p.velocity.scale(-.3f);
+                    p.velocity.x += RandomGenerator.randomRange(-.1f, .1f);
+                    p.velocity.y += RandomGenerator.randomRange(-.1f, .1f);
 
                     p.ttl = RandomGenerator.randomInt(1, 90);
                     p.scale = RandomGenerator.randomRange(32f, 128f);
+
+                    p.color.a = .8f;
                 }
                 
                 public void tickParticle(Particle p, long elapsed) {
@@ -494,7 +496,7 @@ class RocketSprite extends Sprite {
                     
                     float percentile = (float)p.age/(float)p.ttl;
                     
-                    p.color.a = 1f - percentile/2f;
+                    p.color.a = .8f * (1f - percentile);
                     p.size = p.scale * percentile;
                 }
             };       

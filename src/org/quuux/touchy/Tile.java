@@ -18,7 +18,7 @@ public abstract class Tile implements Drawable {
         position = new Vector3();
         rotation = new Vector3();
         scale    = new Vector3(1f, 1f, 1f);
-        bounds   = new Vector3(.8f, .8f, .8f);
+        bounds   = new Vector3(1f, 1f, 1f);
     }
 
     protected Model getModel() {
@@ -26,7 +26,7 @@ public abstract class Tile implements Drawable {
     }
 
     public void load(GL10 gl) {
-        model.loadTexture(gl);
+        model.load(gl);
     }
 
     public void draw(GL10 gl) {
