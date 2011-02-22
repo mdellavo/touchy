@@ -11,16 +11,19 @@ public abstract class ParticleEmitter implements Drawable, Tickable {
 
     private static final String TAG ="ParticleEmitter";
 
+    public boolean loaded = false;
+
     protected Particle[] particles;
 
     protected FloatBuffer vertices;
     protected FloatBuffer sizes;
     protected FloatBuffer colors;
 
-    protected int texture_id = -1 ;
+    protected Texture texture;
 
     public ParticleEmitter(int num_particles) {
 
+        this.texture = getTexture();
         particles = new Particle[num_particles];
 
         vertices = GLHelper.floatBuffer(num_particles * 3);
@@ -33,9 +36,9 @@ public abstract class ParticleEmitter implements Drawable, Tickable {
         }
     }
 
-    abstract protected Bitmap getTextureBitmap();
+    abstract protected Texture getTexture(); 
     abstract public void spawnParticle(Particle p);
-    
+   
     protected void tickParticle(Particle p, long elapsed) {
         p.age++;
         p.velocity.add(p.acceleration);
@@ -49,8 +52,10 @@ public abstract class ParticleEmitter implements Drawable, Tickable {
 
         for(int i=0; i<particles.length; i++) {
 
-            if(particles[i].age > particles[i].ttl)
+            if(particles[i].age > particles[i].ttl) {
+                particles[i].age = 0;
                 spawnParticle(particles[i]);
+            }
 
             tickParticle(particles[i], elapsed);
 
@@ -72,8 +77,10 @@ public abstract class ParticleEmitter implements Drawable, Tickable {
     }
 
     public void load(GL10 gl) {
+        if(!texture.loaded)
+            texture.load(gl);
+
         gl.glEnable(GL11.GL_POINT_SPRITE_OES);
-        texture_id = GLHelper.loadTexture(gl, getTextureBitmap());
 
         gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, 
                            GL10.GL_LINEAR);
@@ -87,11 +94,12 @@ public abstract class ParticleEmitter implements Drawable, Tickable {
 
         gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE);
         gl.glTexEnvf(GL11.GL_POINT_SPRITE_OES, GL11.GL_COORD_REPLACE_OES, GL11.GL_TRUE);
+        loaded = true;
     }
 
     public void draw(GL10 gl) {
 
-        if(texture_id == -1) 
+        if(!loaded) 
             load(gl);
 
         gl.glEnableClientState(GL11.GL_POINT_SIZE_ARRAY_BUFFER_BINDING_OES);
@@ -105,7 +113,7 @@ public abstract class ParticleEmitter implements Drawable, Tickable {
         gl.glColorPointer(4, GL10.GL_FLOAT, 0, colors);
         ((GL11)gl).glPointSizePointerOES(GL10.GL_FLOAT, 0, sizes);
         gl.glVertexPointer(3, GL10.GL_FLOAT, 0, vertices);
-        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture.id);
         gl.glDrawArrays(GL10.GL_POINTS, 0, particles.length);
 
         gl.glEnable(GL10.GL_DEPTH_TEST);

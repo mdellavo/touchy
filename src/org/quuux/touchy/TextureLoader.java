@@ -17,15 +17,15 @@ public class TextureLoader {
     private static final String TAG = "TextureLoader";
     
     private static Context context;
-    private static Map<String, Bitmap> cache;
+    private static Map<String, Texture> cache;
     
     public static void init(Context context) {
         TextureLoader.context = context;
-        TextureLoader.cache   = new HashMap<String, Bitmap>();
+        TextureLoader.cache   = new HashMap<String, Texture>();
     }
 
-    public static Bitmap get(String key) {
-        Bitmap rv = TextureLoader.cache.get(key);
+    public static Texture get(String key) {
+        Texture rv = TextureLoader.cache.get(key);
 
         if(rv == null) {
             rv = openTexture(key);
@@ -35,10 +35,10 @@ public class TextureLoader {
         return rv;
     }
 
-    protected static Bitmap openTexture(String key) {       
+    protected static Texture openTexture(String key) {       
         AssetManager asset_manager = context.getAssets();
 
-        Bitmap rv = null;
+        Texture rv = null;
 
         try {
             String texture_path = "textures/" + key + ".png";
@@ -46,7 +46,7 @@ public class TextureLoader {
             Log.d(TAG, "Opening texture: " + texture_path);
 
             InputStream in = asset_manager.open(texture_path);
-            rv = BitmapFactory.decodeStream(in);
+            rv = new Texture(key, BitmapFactory.decodeStream(in));
         } catch(IOException e) {
             Log.d(TAG, "Could not open texture: " + key);
         }

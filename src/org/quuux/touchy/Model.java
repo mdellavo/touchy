@@ -9,6 +9,10 @@ import javax.microedition.khronos.opengles.GL11;
 
 public class Model {
     private static final String TAG = "Model";
+
+    public String name;
+
+    public boolean loaded = false;
     
     protected int num_vertices;
 
@@ -21,13 +25,15 @@ public class Model {
     protected FloatBuffer normals;
     protected int normal_id = -1;
 
-    protected String texture;
-    protected int texture_id = -1;
+    protected Texture texture;
 
     public Color color;
 
-    public Model(Vector3[] vertices, Vector2[] uvs, Vector3[] normals, 
-                 String texture) {
+    public Model(String name, Vector3[] vertices, Vector2[] uvs, 
+                 Vector3[] normals, Texture texture) {
+
+        this.name = name;
+        this.texture = texture;
 
         num_vertices = vertices.length;
 
@@ -35,18 +41,12 @@ public class Model {
         this.uvs = GLHelper.toFloatBuffer(uvs);
         this.normals = GLHelper.toFloatBuffer(normals);
 
-        this.texture = texture;
-
         color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     public void load(GL10 gl) {
-        Log.d(TAG, "Loading: " + texture);
-        loadBufferObjects(gl);
-        loadTexture(gl);
-    }
+        Log.d(TAG, "Loading: " + name);
 
-    public void loadBufferObjects(GL10 gl) {
         vertex_id = GLHelper.loadBufferObject(gl, this.vertices);
         Log.d(TAG, "vertex id: " + vertex_id);
 
@@ -55,28 +55,14 @@ public class Model {
 
         normal_id = GLHelper.loadBufferObject(gl, this.normals);
         Log.d(TAG, "normal id: " + normal_id);
-    }
 
-    public void loadTexture(GL10 gl) {
-        Bitmap bitmap = TextureLoader.get(texture);
-        texture_id = GLHelper.loadTexture(gl, bitmap);
-
-        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE,
-                     GL10.GL_MODULATE);
-
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, 
-                           GL10.GL_LINEAR);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER,
-                           GL10.GL_LINEAR);
-
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S,
-                           GL10.GL_REPEAT);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T,
-                           GL10.GL_REPEAT);
+        texture.load(gl);
+        
+        loaded = true;
     }
 
     public void draw(GL10 gl) {
-        if(texture_id == -1)
+        if(!loaded)
             load(gl);
 
         gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
@@ -87,7 +73,7 @@ public class Model {
         ((GL11)gl).glBindBuffer(GL11.GL_ARRAY_BUFFER, vertex_id);
         ((GL11)gl).glVertexPointer(3, GL10.GL_FLOAT, 0, 0);
 
-        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture_id);
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture.id);
         ((GL11)gl).glBindBuffer(GL11.GL_ARRAY_BUFFER, uv_id);
         ((GL11)gl).glTexCoordPointer(2, GL10.GL_FLOAT, 0, 0);
 

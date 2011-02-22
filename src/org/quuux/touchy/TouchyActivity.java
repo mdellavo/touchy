@@ -113,9 +113,9 @@ class TouchyGLSurfaceView extends GLSurfaceView
         touch_position[2] /= touch_position[3];
         touch_position[3] /= touch_position[3];
 
-        return new Vector3(touch_position[0], 
-                           touch_position[1], 
-                           touch_position[2]); 
+        return new Vector3( touch_position[0],
+                            touch_position[1],
+                            touch_position[2] );
     }
 
     public boolean onTouchEvent(final MotionEvent e) {
@@ -124,7 +124,8 @@ class TouchyGLSurfaceView extends GLSurfaceView
     }
 
     public boolean onDown(MotionEvent e) {
-        return false;
+        Log.d(TAG, "down");
+        return true;
     }
 
     public boolean onFling(MotionEvent e1, MotionEvent e2, 
@@ -137,9 +138,16 @@ class TouchyGLSurfaceView extends GLSurfaceView
         Log.d(TAG, "long press");
     }
 
-    public boolean onScroll(MotionEvent e1, MotionEvent e2,
+    public boolean onScroll(final MotionEvent e1, final MotionEvent e2,
                             float distanceX, float distanceY) {
-        return false;
+        queueEvent(new Runnable() {
+                public void run() {
+                    Vector3 vec = projectTouchToWorld(e2.getX(), e2.getY());
+                    ((AsteroidCommandWorld)renderer.getWorld()).fireBeamAt(vec);
+                }
+            });
+
+        return true;
     }
 
     public void onShowPress(MotionEvent e) {        
@@ -150,14 +158,13 @@ class TouchyGLSurfaceView extends GLSurfaceView
     }
 
     public boolean onSingleTapConfirmed(final MotionEvent e) {
-
         queueEvent(new Runnable() {
                 public void run() {
                     Vector3 vec = projectTouchToWorld(e.getX(), e.getY());
-                    ((AsteroidCommandWorld)renderer.getWorld()).fireAt(vec);
+                    ((AsteroidCommandWorld)renderer.getWorld()).fireBeamAt(vec);
                 }
             });
-        
+
         return true;
     }
 
@@ -165,8 +172,14 @@ class TouchyGLSurfaceView extends GLSurfaceView
         return false;
     }
 
-    public boolean onDoubleTap(MotionEvent e) {
-        Log.d(TAG, "double tap");
+    public boolean onDoubleTap(final MotionEvent e) {
+        queueEvent(new Runnable() {
+                public void run() {
+                    Vector3 vec = projectTouchToWorld(e.getX(), e.getY());
+                    ((AsteroidCommandWorld)renderer.getWorld()).fireRocketAt(vec);
+                }
+            });
+
         return true;
     }
 }
@@ -291,7 +304,9 @@ class AsteroidCommandWorld extends World {
     public SpriteGroup projectiles = new SpriteGroup();
     public SpriteGroup stations    = new SpriteGroup();
 
+    // FIXME need to fix my groups
     public FPSSprite fps = new FPSSprite();
+    public BeamEmitter beam_emitter;
 
     public Tile ground;
     public Tile sky;
@@ -308,14 +323,17 @@ class AsteroidCommandWorld extends World {
         
         for(int i=0; i<num_asteroids; i++)
             spawnAsteroid();
+
+        beam_emitter = new BeamEmitter(new Vector3(1f, 1f, -1f));
     }
 
     public void draw(GL10 gl) {
         statics.draw(gl);
         asteroids.draw(gl);
         projectiles.draw(gl);
-        stations.draw(gl);
         fps.draw(gl);
+        stations.draw(gl);
+        beam_emitter.draw(gl);
     }
 
     public void load(GL10 gl) {
@@ -324,6 +342,7 @@ class AsteroidCommandWorld extends World {
         projectiles.load(gl);
         stations.load(gl);
         fps.load(gl);
+        beam_emitter.load(gl);
     }
 
     CollisionListener AsteroidCollisionListener = new CollisionListener() {
@@ -394,12 +413,13 @@ class AsteroidCommandWorld extends World {
         asteroids.tick(elapsed);
         projectiles.tick(elapsed);
         stations.tick(elapsed);
+        beam_emitter.tick(elapsed);
 
         asteroids.collide(asteroids, AsteroidCollisionListener);        
         projectiles.collide(asteroids, ProjectileCollisionListener);
 
-        rangeFilter(asteroids, 500f);
-        rangeFilter(projectiles, 500f);
+        rangeFilter(asteroids, 1000f);
+        rangeFilter(projectiles, 1000f);
 
         asteroids.reap();
         projectiles.reap();
@@ -453,11 +473,14 @@ class AsteroidCommandWorld extends World {
         asteroids.spawn(a);
     }
 
-    public void fireAt(Vector3 p) {
-        Log.d(TAG, "Firing at " + p);
-
+    public void fireRocketAt(Vector3 p) {
         RocketSprite r = new RocketSprite(p);
         projectiles.spawn(r);
+    }
+
+    public void fireBeamAt(Vector3 p) {
+        beam_emitter.target.copy(p);
+        beam_emitter.target.normalize();
     }
 }
 
@@ -493,9 +516,51 @@ class AsteroidSprite extends Sprite {
     }
 }
 
+class BeamEmitter extends ParticleEmitter {
+    private static final String TAG = "BeamEmitter";
+
+    private static final String TEXTURE_KEY = "smoke";
+
+    protected Vector3 position;
+    public Vector3 target;
+
+    public BeamEmitter(Vector3 target) {
+        super(500);
+        position = new Vector3(0f, -10f, 0f);
+        
+        target.normalize();
+        this.target = target;
+    }
+
+    protected Texture getTexture() {
+        return TextureLoader.get(BeamEmitter.TEXTURE_KEY);
+    }
+                
+    public void spawnParticle(Particle p) {
+        p.position.copy(position);
+        p.velocity.copy(target);
+        p.velocity.scale(.5f);
+        p.ttl = RandomGenerator.randomInt(1, 300);
+        p.size = 16f;
+        p.color.r = .8f;
+        p.color.a = .6f;       
+    }
+
+    public void tickParticle(Particle p, long elapsed) {
+        super.tickParticle(p, elapsed);
+
+        float percentile = (float)p.age/(float)p.ttl;   
+        p.color.a = .6f * (1f - percentile);
+        p.size = 10f*(1f - percentile);
+    }
+}
+
 class RocketSprite extends Sprite {
 
     private static final String MODEL_KEY = "rocket";
+    private static final String SMOKE_TEXTURE_KEY = "smoke";
+
+    protected ParticleEmitter smoke_trail;
 
     public RocketSprite(Vector3 target) {
         super();
@@ -517,10 +582,8 @@ class RocketSprite extends Sprite {
         smoke_trail = new ParticleEmitter(100) {
                 private final static String TAG = "SmokeTrail";
 
-                private final static String TEXTURE = "smoke";
-
-                protected Bitmap getTextureBitmap() {
-                    return TextureLoader.get(TEXTURE);
+                protected Texture getTexture() {
+                    return TextureLoader.get(RocketSprite.SMOKE_TEXTURE_KEY);
                 }
                 
                 public void spawnParticle(Particle p) {
@@ -567,8 +630,6 @@ class RocketSprite extends Sprite {
         super.tick(elapsed);
         smoke_trail.tick(elapsed);
     }
-
-    protected ParticleEmitter smoke_trail;
 }
 
 

@@ -140,7 +140,9 @@ public class ObjLoader {
             Vector3[] normal_array = new Vector3[normals.size()];           
             normals.toArray(normal_array);
 
-            rv = new Model(vertex_array, uv_array, normal_array, key);
+            Texture texture = TextureLoader.get(key);
+
+            rv = new Model(key, vertex_array, uv_array, normal_array, texture);
 
         } catch(IOException e) {
             Log.d(TAG, "error loading model: " + e);
