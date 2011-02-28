@@ -112,7 +112,7 @@ public class ObjLoader {
             
                 String[] parts = line.split("\\s");
 
-                if(parts[0] == "#")
+                if(parts.length == 0 || parts[0] == "#")
                     continue;
                 else if(parts[0].equals("vt"))
                     vt.add(parsePoint2(parts));

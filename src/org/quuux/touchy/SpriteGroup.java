@@ -3,7 +3,6 @@ package org.quuux.touchy;
 import javax.microedition.khronos.opengles.GL10;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 
 public class SpriteGroup extends TileGroup implements Tickable {
     private static final String TAG = "SpriteGroup";
@@ -19,27 +18,28 @@ public class SpriteGroup extends TileGroup implements Tickable {
     }
 
     public void tick(long elapsed) {
-        for(Sprite s: spawned)
-            tiles.add(s);
+        for(int i=0; i<spawned.size(); i++)
+            tiles.add(spawned.get(i));
 
         spawned.clear();
 
-        for(Tile t : tiles)
-            ((Sprite)t).tick(elapsed);
+        for(int i=0; i<tiles.size(); i++)
+            ((Sprite)tiles.get(i)).tick(elapsed);
     }
 
     protected int reap() {
         int removed = 0;
-     
-        Iterator<Tile> iter = tiles.iterator();
 
-        while(iter.hasNext()) {
-            Sprite t = (Sprite)iter.next();
-            
+        for(int i=0; i<tiles.size(); i++) {
+
+            Sprite t = (Sprite)tiles.get(i);
+
             if(!t.isAlive()) {
-                iter.remove();
+                tiles.remove(i);
                 removed++;
+                i--;
             }
+            
         }
         
         return removed;

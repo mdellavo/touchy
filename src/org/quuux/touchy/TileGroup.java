@@ -18,13 +18,13 @@ public class TileGroup implements Drawable {
     }
 
     public void load(GL10 gl) {
-        for(Tile t : tiles)
-            t.load(gl);
+        for(int i=0; i<tiles.size(); i ++)
+            tiles.get(i).load(gl);
     }
 
     public void draw(GL10 gl) {
-        for(Tile t : tiles)
-            t.draw(gl);
+        for(int i=0; i<tiles.size(); i ++)
+            tiles.get(i).draw(gl);
     }
 
     public ArrayList<Tile> getTiles() {
@@ -35,8 +35,14 @@ public class TileGroup implements Drawable {
 
         int collisions = 0;
 
-        for(Tile tile : tiles) {
-            for(Tile other : others.getTiles()) {
+        ArrayList<Tile> other_tiles = others.getTiles();
+
+        for(int i=0; i<tiles.size(); i++) {
+            for(int j=0; j<other_tiles.size(); j++) {
+
+                Tile tile = tiles.get(i);
+                Tile other = other_tiles.get(j);
+
                 if(tile != other && tile.contains(other)) {
                     listener.onCollision(tile, other);
                     collisions++;

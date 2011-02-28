@@ -26,8 +26,6 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL;
 import javax.microedition.khronos.opengles.GL10;
 
-import java.util.Iterator;
-import java.util.ListIterator;
 import java.util.ArrayList;
 
 public class TouchyActivity extends Activity
@@ -269,6 +267,8 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         
         camera.setup(gl, width, height);       
         world.load(gl);
+        
+        System.gc();
     }
 
     public void onDrawFrame(GL10 gl) {
@@ -433,10 +433,8 @@ class AsteroidCommandWorld extends World {
         int removed = 0;
 
         ArrayList<Tile> tiles = group.getTiles();    
-        Iterator<Tile> iter = tiles.iterator();
-
-        while(iter.hasNext()) {
-            Sprite t = (Sprite)iter.next();
+        for(int i=0; i<tiles.size(); i++) {
+            Sprite t = (Sprite)tiles.get(i);
             
             if(t.position.magnitude() > range)
                 t.die();
@@ -519,7 +517,7 @@ class AsteroidSprite extends Sprite {
 class BeamEmitter extends ParticleEmitter {
     private static final String TAG = "BeamEmitter";
 
-    private static final String TEXTURE_KEY = "smoke";
+    private static final String TEXTURE_KEY = "plasma";
 
     protected Vector3 position;
     public Vector3 target;
@@ -540,18 +538,20 @@ class BeamEmitter extends ParticleEmitter {
         p.position.copy(position);
         p.velocity.copy(target);
         p.velocity.scale(.5f);
-        p.ttl = RandomGenerator.randomInt(1, 300);
-        p.size = 16f;
-        p.color.r = .8f;
-        p.color.a = .6f;       
+        p.ttl = RandomGenerator.randomInt(1, 200);
+        p.color.b = .2f;
+        p.color.g = .4f;
+        p.color.a = .4f;       
     }
 
     public void tickParticle(Particle p, long elapsed) {
         super.tickParticle(p, elapsed);
 
         float percentile = (float)p.age/(float)p.ttl;   
-        p.color.a = .6f * (1f - percentile);
-        p.size = 10f*(1f - percentile);
+        p.color.r  = 1f - percentile;
+        p.color.g = .4f * (1f - percentile);
+        p.color.a = .4f * (1f - percentile);
+        p.size = 32f + 32f * percentile;
     }
 }
 
