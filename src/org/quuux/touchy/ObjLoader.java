@@ -104,6 +104,7 @@ public class ObjLoader {
         ArrayList<Vector3> normals = new ArrayList<Vector3>();
 
         Model rv = null;
+        Material material = null;
 
         try {
             String line;
@@ -120,6 +121,10 @@ public class ObjLoader {
                     vn.add(parsePoint3(parts));
                 else if(parts[0].equals("v"))
                     v.add(parsePoint3(parts));
+                else if(parts[0].equals("mtllib"))
+                    MTLLoader.loadMaterial(parts[1]);
+                else if(parts[0].equals("usemtl"))
+                    material = MTLLoader.get(parts[1]);
                 else if(parts[0].equals("f")) {
 
                     Vector3[][] face = parseFace(v, vt, vn, parts);
@@ -140,9 +145,7 @@ public class ObjLoader {
             Vector3[] normal_array = new Vector3[normals.size()];           
             normals.toArray(normal_array);
 
-            Texture texture = TextureLoader.get(key);
-
-            rv = new Model(key, vertex_array, uv_array, normal_array, texture);
+            rv = new Model(key, vertex_array, uv_array, normal_array, material);
 
         } catch(IOException e) {
             Log.d(TAG, "error loading model: " + e);

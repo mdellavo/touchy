@@ -25,27 +25,23 @@ public class Model {
     protected FloatBuffer normals;
     protected int normal_id = -1;
 
-    protected Texture texture;
-
-    public Color color;
+    protected Material material;
 
     public Model(String name, Vector3[] vertices, Vector2[] uvs, 
-                 Vector3[] normals, Texture texture) {
+                 Vector3[] normals, Material material) {
 
         this.name = name;
-        this.texture = texture;
+        this.material = material;
 
         num_vertices = vertices.length;
 
         this.vertices = GLHelper.toFloatBuffer(vertices);
         this.uvs = GLHelper.toFloatBuffer(uvs);
         this.normals = GLHelper.toFloatBuffer(normals);
-
-        color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     public void load(GL10 gl) {
-        Log.d(TAG, "Loading: " + name);
+        Log.d(TAG, "Loading model: " + name);
 
         vertex_id = GLHelper.loadBufferObject(gl, this.vertices);
         Log.d(TAG, "vertex id: " + vertex_id);
@@ -56,7 +52,7 @@ public class Model {
         normal_id = GLHelper.loadBufferObject(gl, this.normals);
         Log.d(TAG, "normal id: " + normal_id);
 
-        texture.load(gl);
+        material.load(gl);
         
         loaded = true;
     }
@@ -68,17 +64,17 @@ public class Model {
         gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
         gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
 
-        gl.glColor4f(color.r, color.g, color.b, color.a);
+        material.enable(gl);
 
         ((GL11)gl).glBindBuffer(GL11.GL_ARRAY_BUFFER, vertex_id);
         ((GL11)gl).glVertexPointer(3, GL10.GL_FLOAT, 0, 0);
 
-        gl.glBindTexture(GL10.GL_TEXTURE_2D, texture.id);
         ((GL11)gl).glBindBuffer(GL11.GL_ARRAY_BUFFER, uv_id);
         ((GL11)gl).glTexCoordPointer(2, GL10.GL_FLOAT, 0, 0);
 
         ((GL11)gl).glBindBuffer(GL11.GL_ARRAY_BUFFER, normal_id);
         ((GL11)gl).glNormalPointer(GL10.GL_FLOAT, 0, 0);
+
         gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, num_vertices);
 
         ((GL11)gl).glBindBuffer(GL11.GL_ARRAY_BUFFER, 0);

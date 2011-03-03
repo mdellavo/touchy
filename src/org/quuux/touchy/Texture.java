@@ -40,4 +40,8 @@ public class Texture {
 
         loaded = true;
     }
+
+    public void enable(GL10 gl) {
+        gl.glBindTexture(GL10.GL_TEXTURE_2D, id);        
+    }
 }

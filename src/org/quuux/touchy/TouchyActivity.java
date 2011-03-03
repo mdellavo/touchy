@@ -44,8 +44,12 @@ public class TouchyActivity extends Activity
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        ObjLoader.init(this);
         TextureLoader.init(this);
+
+        MTLLoader.init(this);
+        MTLLoader.loadMaterial("default");
+
+        ObjLoader.init(this);
 
         AsteroidCommandWorld world = new AsteroidCommandWorld();
         Camera camera = new Camera();
@@ -249,14 +253,22 @@ class TouchyRenderer implements GLSurfaceView.Renderer {
         gl.glShadeModel(GL10.GL_SMOOTH);
         gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_LINEAR);
 
-        gl.glEnable(GL10.GL_TEXTURE_2D);
         gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, 
                      GL10.GL_MODULATE);
+
+        gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
+
+        float[] light_position = { 100.0f, 100.0f, 100.0f, 0 };
+        gl.glLightfv(GL10.GL_LIGHT0, GL10.GL_POSITION, light_position, 0);
+
+        gl.glEnable(GL10.GL_TEXTURE_2D);
 
         gl.glEnable(GL10.GL_BLEND);
         gl.glEnable(GL10.GL_DEPTH_TEST);
 
-        gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glEnable(GL10.GL_LIGHTING);
+        gl.glEnable(GL10.GL_LIGHT0);
+
    }
 
     public void onSurfaceChanged(GL10 gl, int width, int height) {

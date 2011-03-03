@@ -1,0 +1,17 @@
+newmtl asteroid
+map_Ka asteroid
+
+newmtl ground
+map_Ka ground
+
+newmtl metal
+map_Ka rocket
+
+newmtl background
+map_Ka background
+
+newmtl smoke
+map_Ka smoke
+
+newmtl plasma
+map_Ka plasma
